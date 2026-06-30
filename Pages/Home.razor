@@ -44,6 +44,27 @@
             </div>
             
         </div>
+        
+        @if (savedJobs.Any())
+        {
+            <div class="recent-jobs-section">
+                <h4 class="section-title">Your Hosted Jobs</h4>
+                <div class="job-list">
+                    @foreach (var job in savedJobs.OrderByDescending(j => j.LastModified))
+                    {
+                        <div class="job-item" @onclick="() => ResumeJob(job.JobId)">
+                            <div class="job-info">
+                                <span class="job-name">@job.JobName</span>
+                                <span class="job-code">@job.JobId</span>
+                            </div>
+                            <div class="job-meta">
+                                <span class="material-icons">arrow_forward_ios</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
     </div>
 </div>
 
@@ -198,11 +219,80 @@
             grid-template-columns: 1fr;
         }
     }
+
+    .recent-jobs-section {
+        margin-top: 40px;
+        text-align: left;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        padding-top: 20px;
+    }
+
+    .section-title {
+        color: var(--text-dark-muted);
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        letter-spacing: 1px;
+        margin-bottom: 15px;
+    }
+
+    .job-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .job-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 15px 20px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .job-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.1);
+        transform: translateX(5px);
+    }
+
+    .job-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .job-name {
+        color: var(--text-white);
+        font-weight: bold;
+        font-size: 1.1rem;
+    }
+
+    .job-code {
+        color: var(--brand-accent);
+        font-family: monospace;
+        font-size: 0.9rem;
+        letter-spacing: 1px;
+    }
+
+    .job-meta .material-icons {
+        color: var(--text-dark-muted);
+        font-size: 1.2rem;
+    }
 </style>
 
 @code {
     private string newJobName = string.Empty;
     private string joinCode = string.Empty;
+    private List<Job> savedJobs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        savedJobs = await Storage.GetAllJobsAsync();
+    }
 
     private async Task CreateJob()
     {
@@ -223,5 +313,10 @@
         {
             Navigation.NavigateTo($"/job/{joinCode}?role=guest");
         }
+    }
+
+    private void ResumeJob(string jobId)
+    {
+        Navigation.NavigateTo($"/job/{jobId}");
     }
 }
