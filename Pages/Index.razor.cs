@@ -3,7 +3,7 @@ using System.Runtime.InteropServices.JavaScript;
 using Microsoft.JSInterop;
 using System.Threading.Tasks;
 
-namespace PourAndMeasure.Pages
+namespace TimelineZLA.Pages
 {
     public partial class Index : IDisposable
     {
@@ -75,3 +75,4 @@ namespace PourAndMeasure.Pages
         }
     }
 }
+

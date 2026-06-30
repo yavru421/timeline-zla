@@ -2,7 +2,7 @@ using Microsoft.JSInterop;
 using System;
 using System.Threading.Tasks;
 
-namespace PourAndMeasure.Services
+namespace TimelineZLA.Services
 {
     public class SyncService : IDisposable
     {
@@ -58,3 +58,4 @@ namespace PourAndMeasure.Services
         }
     }
 }
+

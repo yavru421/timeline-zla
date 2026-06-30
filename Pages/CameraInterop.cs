@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices.JavaScript;
 using System.Threading.Tasks;
 
-namespace PourAndMeasure.Pages;
+namespace TimelineZLA.Pages;
 
 public static partial class CameraInterop
 {
@@ -18,3 +18,4 @@ public static partial class CameraInterop
     [JSImport("updateCalibrationLines", "camera-overlay.js")]
     internal static partial void UpdateCalibrationLines([JSMarshalAs<JSType.Array<JSType.Number>>] int[] yArray);
 }
+

@@ -2,7 +2,7 @@ using Microsoft.JSInterop;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace PourAndMeasure.Services
+namespace TimelineZLA.Services
 {
     public class TimelineStorageService
     {
@@ -32,3 +32,4 @@ namespace PourAndMeasure.Services
         }
     }
 }
+
