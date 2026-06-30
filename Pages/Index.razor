@@ -1,0 +1,33 @@
+@page "/"
+@using PourAndMeasure.Components
+@using PourAndMeasure.Services
+@inject PdfExportService PdfExport
+
+<PageTitle>Timeline - ZLA Feed</PageTitle>
+
+<div class="timeline-container" style="max-width: 800px; margin: 0 auto; padding: 20px;">
+    <SyncDashboard PendingCount="3" LastSync="DateTime.Now.AddHours(-1)" OnSyncClicked="HandleSync" />
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Field Notes Timeline</h2>
+        <button class="btn btn-primary" style="background-color: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer;" @onclick="ExportTimeline">Export PDF</button>
+    </div>
+
+    <div id="timeline-export-area" class="timeline-feed" style="background: #1e1e1e; padding: 20px; border-radius: 8px;">
+        <TimelineEntryCard Title="Site Inspection Started" Timestamp="DateTime.Now.AddHours(-2)" Notes="Arrived at the site. Conditions look good for pouring." />
+        <TimelineEntryCard Title="Formwork Complete" Timestamp="DateTime.Now.AddHours(-1)" Notes="Formwork has been verified and signed off." ImageUrl="https://via.placeholder.com/600x400.png?text=Formwork+Photo" />
+        <TimelineEntryCard Title="Concrete Pour Initiated" Timestamp="DateTime.Now" Notes="First truck arrived and pouring commenced." />
+    </div>
+</div>
+
+@code {
+    private async Task ExportTimeline()
+    {
+        await PdfExport.ExportToPdfAsync("timeline-export-area", $"Timeline_Export_{DateTime.Now:yyyyMMdd_HHmm}.pdf");
+    }
+
+    private void HandleSync()
+    {
+        Console.WriteLine("Sync initiated (Simulated in ZLA)");
+    }
+}

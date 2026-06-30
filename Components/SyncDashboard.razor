@@ -1,0 +1,18 @@
+<div class="sync-dashboard" style="padding: 15px; background: rgba(0, 200, 255, 0.1); border-radius: 8px; margin-bottom: 20px;">
+    <h3>Sync Dashboard</h3>
+    <div style="display: flex; gap: 20px;">
+        <div>
+            <strong>Pending Edits:</strong> @PendingCount
+        </div>
+        <div>
+            <strong>Last Sync:</strong> @(LastSync?.ToString("g") ?? "Never")
+        </div>
+    </div>
+    <button style="margin-top: 10px; padding: 8px 16px; background-color: #007aff; color: white; border: none; border-radius: 4px; cursor: pointer;" @onclick="OnSyncClicked">Sync Now</button>
+</div>
+
+@code {
+    [Parameter] public int PendingCount { get; set; }
+    [Parameter] public DateTime? LastSync { get; set; }
+    [Parameter] public EventCallback OnSyncClicked { get; set; }
+}

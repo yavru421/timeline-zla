@@ -1,0 +1,11 @@
+name = "pourandmeasure"
+compatibility_date = "2024-05-26"
+
+[build]
+command = "bash build.sh"
+
+[assets]
+directory = "output/wwwroot"
+not_found_handling = "single-page-application"
+include = ["**/*"]
+

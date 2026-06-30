@@ -1,0 +1,20 @@
+<div class="timeline-entry-card" style="border: 1px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 8px; background-color: rgba(255,255,255,0.05);">
+    <div class="entry-header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+        <strong>@Title</strong>
+        <span style="color: #888;">@Timestamp.ToString("g")</span>
+    </div>
+    @if (!string.IsNullOrEmpty(ImageUrl))
+    {
+        <img src="@ImageUrl" alt="Field Photo" style="max-width: 100%; border-radius: 4px; margin-bottom: 10px;" />
+    }
+    <div class="entry-notes">
+        @Notes
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public DateTime Timestamp { get; set; }
+    [Parameter] public string Notes { get; set; } = string.Empty;
+    [Parameter] public string? ImageUrl { get; set; }
+}
