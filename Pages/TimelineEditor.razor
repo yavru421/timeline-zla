@@ -29,6 +29,9 @@
         </div>
 
         <div class="header-right">
+            <button class="icon-btn tooltip-btn" @onclick="ExportPdf" title="Export Timeline to PDF">
+                <span class="material-icons">picture_as_pdf</span>
+            </button>
             <div class="sync-status @(isSyncing ? "sync-active" : "")">
                 <span class="pulse-dot"></span>
                 <span>@(isSyncing ? "Syncing..." : "Live")</span>
@@ -45,7 +48,7 @@
         </div>
     }
 
-    <div class="timeline-canvas-wrapper">
+    <div class="timeline-canvas-wrapper" id="timeline-export-root">
         @if (currentJob.Entries.Count == 0)
         {
             <div class="empty-state">

@@ -192,6 +192,12 @@ namespace TimelineZLA.Pages
             Navigation.NavigateTo("/");
         }
 
+        private async Task ExportPdf()
+        {
+            string filename = $"TimelineZLA_{JobCode}_{DateTime.Now:yyyyMMdd}.pdf";
+            await JSRuntime.InvokeVoidAsync("pdfExport.exportElement", "timeline-export-root", filename);
+        }
+
         public void Dispose()
         {
             Sync.OnDataReceived -= OnSyncDataReceived;
