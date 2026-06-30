@@ -7,5 +7,4 @@ command = "bash build.sh"
 [assets]
 directory = "output/wwwroot"
 not_found_handling = "single-page-application"
-include = ["**/*"]
 
