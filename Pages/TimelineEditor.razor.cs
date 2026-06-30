@@ -222,6 +222,11 @@ namespace TimelineZLA.Pages
             await JSRuntime.InvokeVoidAsync("pdfExport.exportElement", "timeline-export-root", filename);
         }
 
+        private async Task ShareJobCode()
+        {
+            await JSRuntime.InvokeVoidAsync("zlaInterop.shareJobCode", JobCode);
+        }
+
         public void Dispose()
         {
             Sync.OnDataReceived -= OnSyncDataReceived;

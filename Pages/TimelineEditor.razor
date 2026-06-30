@@ -34,6 +34,9 @@
             <div class="code-display">
                 <span class="label">JOB CODE</span>
                 <span class="code">@JobCode</span>
+                <button class="icon-btn share-btn" @onclick="ShareJobCode" title="Share Access Code">
+                    <span class="material-icons">ios_share</span>
+                </button>
             </div>
         </div>
 
@@ -183,9 +186,11 @@
     .code-display {
         text-align: center;
         background: rgba(0,0,0,0.3);
-        padding: 4px 16px;
+        padding: 4px 8px 4px 16px;
         border-radius: 20px;
         border: 1px solid rgba(255,255,255,0.05);
+        display: flex;
+        align-items: center;
     }
 
     .code-display .label {
@@ -200,6 +205,17 @@
         font-weight: bold;
         letter-spacing: 2px;
         color: #fff;
+        margin-right: 8px;
+    }
+
+    .share-btn {
+        padding: 4px;
+        background: rgba(255,255,255,0.05);
+    }
+    
+    .share-btn .material-icons {
+        font-size: 1.1rem;
+        color: var(--brand-accent);
     }
 
     .sync-status {
