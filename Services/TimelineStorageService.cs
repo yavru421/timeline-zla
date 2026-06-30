@@ -17,22 +17,22 @@ namespace TimelineZLA.Services
 
         public async Task SaveJobAsync(Job job)
         {
-            await _jsRuntime.InvokeVoidAsync("storage.setItem", $"job_{job.JobId}", job);
+            await _jsRuntime.InvokeVoidAsync("timelineStorage.saveData", $"job_{job.JobId}", job);
         }
 
         public async Task<Job?> GetJobAsync(string jobId)
         {
-            return await _jsRuntime.InvokeAsync<Job?>("storage.getItem", $"job_{jobId}");
+            return await _jsRuntime.InvokeAsync<Job?>("timelineStorage.loadData", $"job_{jobId}");
         }
 
         public async Task<List<Job>> GetAllJobsAsync()
         {
             var jobs = new List<Job>();
-            var keys = await _jsRuntime.InvokeAsync<List<string>>("storage.getKeysWithPrefix", "job_");
+            var keys = await _jsRuntime.InvokeAsync<List<string>>("timelineStorage.getKeysWithPrefix", "job_");
             
             foreach (var key in keys)
             {
-                var job = await _jsRuntime.InvokeAsync<Job?>("storage.getItem", key);
+                var job = await _jsRuntime.InvokeAsync<Job?>("timelineStorage.loadData", key);
                 if (job != null)
                 {
                     jobs.Add(job);
@@ -43,7 +43,7 @@ namespace TimelineZLA.Services
 
         public async Task DeleteJobAsync(string jobId)
         {
-            await _jsRuntime.InvokeVoidAsync("storage.removeItem", $"job_{jobId}");
+            await _jsRuntime.InvokeVoidAsync("timelineStorage.removeData", $"job_{jobId}");
         }
     }
 }
