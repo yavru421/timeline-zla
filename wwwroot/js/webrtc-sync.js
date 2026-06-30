@@ -91,5 +91,13 @@ window.webrtcSync = {
             }
         }
         return sent;
+    },
+    
+    disconnect: function() {
+        if (this.peer) {
+            this.peer.destroy();
+            this.peer = null;
+        }
+        this.connections = {};
     }
 };

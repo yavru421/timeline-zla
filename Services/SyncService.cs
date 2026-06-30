@@ -26,6 +26,11 @@ namespace TimelineZLA.Services
             await _jsRuntime.InvokeVoidAsync("webrtcSync.initialize", _dotNetRef, customId);
         }
 
+        public async Task DisconnectAsync()
+        {
+            await _jsRuntime.InvokeVoidAsync("webrtcSync.disconnect");
+        }
+
         public async Task<bool> ConnectToPeerAsync(string targetId)
         {
             return await _jsRuntime.InvokeAsync<bool>("webrtcSync.connectToPeer", targetId);

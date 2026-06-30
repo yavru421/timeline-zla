@@ -19,6 +19,15 @@
             <span class="status-badge @(IsHost ? "host-badge" : "guest-badge")">
                 @(IsHost ? "HOSTING" : "VIEWING")
             </span>
+            @if (IsHost)
+            {
+                <div class="office-hours-toggle @(lobbyIsOpen ? "open" : "closed")" @onclick="ToggleLobby">
+                    <div class="toggle-track">
+                        <div class="toggle-knob"></div>
+                    </div>
+                    <span class="toggle-label">@(lobbyIsOpen ? "LOBBY OPEN" : "LOBBY CLOSED")</span>
+                </div>
+            }
         </div>
         
         <div class="header-center">
@@ -204,6 +213,70 @@
     .sync-status.sync-active {
         color: #2ea043;
     }
+
+    .office-hours-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        padding: 4px 10px;
+        background: rgba(0,0,0,0.3);
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.1);
+        transition: all 0.3s;
+    }
+
+    .office-hours-toggle.open {
+        border-color: rgba(46, 160, 67, 0.5);
+        background: rgba(46, 160, 67, 0.1);
+    }
+
+    .office-hours-toggle.closed {
+        border-color: rgba(248, 81, 73, 0.5);
+        background: rgba(248, 81, 73, 0.1);
+    }
+
+    .toggle-track {
+        width: 36px;
+        height: 20px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 10px;
+        position: relative;
+        transition: all 0.3s;
+    }
+
+    .office-hours-toggle.open .toggle-track {
+        background: #2ea043;
+    }
+
+    .office-hours-toggle.closed .toggle-track {
+        background: #f85149;
+    }
+
+    .toggle-knob {
+        width: 16px;
+        height: 16px;
+        background: white;
+        border-radius: 50%;
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        transition: all 0.3s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .office-hours-toggle.open .toggle-knob {
+        left: 18px;
+    }
+
+    .toggle-label {
+        font-size: 0.75rem;
+        font-weight: bold;
+        letter-spacing: 1px;
+    }
+
+    .office-hours-toggle.open .toggle-label { color: #2ea043; }
+    .office-hours-toggle.closed .toggle-label { color: #f85149; }
 
     .pulse-dot {
         width: 8px;

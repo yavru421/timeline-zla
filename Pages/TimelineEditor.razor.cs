@@ -21,6 +21,7 @@ namespace TimelineZLA.Pages
         private bool IsHost = true;
         private bool hasReceivedInitialData = false;
         private bool isSyncing = false;
+        private bool lobbyIsOpen = false;
         private Job currentJob = new();
         private DotNetObjectReference<TimelineEditor>? dotNetRef;
         private int lastRenderedEntryCount = 0;
@@ -50,7 +51,7 @@ namespace TimelineZLA.Pages
                         currentJob = job;
                     }
                     
-                    await Sync.InitializeAsync(JobCode); // Listen on specific 6-digit code
+                    // Do not initialize Sync until host explicitly opens the lobby
                     hasReceivedInitialData = true;
                     StateHasChanged();
                 }
@@ -77,6 +78,23 @@ namespace TimelineZLA.Pages
             }
         }
 
+        private async Task ToggleLobby()
+        {
+            if (!IsHost) return;
+
+            lobbyIsOpen = !lobbyIsOpen;
+            if (lobbyIsOpen)
+            {
+                await Sync.InitializeAsync(JobCode);
+            }
+            else
+            {
+                await Sync.DisconnectAsync();
+                isSyncing = false;
+            }
+            StateHasChanged();
+        }
+
         private async Task AddNewEntry()
         {
             if (!IsHost) return;
@@ -88,9 +106,12 @@ namespace TimelineZLA.Pages
             await Storage.SaveJobAsync(currentJob);
             StateHasChanged(); // This triggers re-render, adding the new card
 
-            // Broadcast the full updated job state
-            var payload = new { type = "timeline_update", entries = currentJob.Entries };
-            await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+            if (lobbyIsOpen)
+            {
+                // Broadcast the full updated job state
+                var payload = new { type = "timeline_update", entries = currentJob.Entries };
+                await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+            }
         }
 
         [JSInvokable]
@@ -109,9 +130,12 @@ namespace TimelineZLA.Pages
                 
                 await Storage.SaveJobAsync(currentJob);
 
-                // Broadcast to all connected guests
-                var payload = new { type = "timeline_update", entries = currentJob.Entries };
-                await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+                if (lobbyIsOpen)
+                {
+                    // Broadcast to all connected guests
+                    var payload = new { type = "timeline_update", entries = currentJob.Entries };
+                    await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+                }
 
                 await Task.Delay(500);
                 isSyncing = false;
