@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Remote Dimension Tool</title>
+    <title>TimelineZLA</title>
     <base href="/" />
     
     <!-- Apple PWA Standalone Mode Tags -->
@@ -29,7 +29,7 @@
     <div id="app">
         <div class="shotstack-loader">
             <div class="spinner"></div>
-            <span class="loading-text">Mounting Pour & Measure...</span>
+            <span class="loading-text">Loading TimelineZLA...</span>
             <div class="progress-bar-container">
                 <div class="progress-bar-fill" style="width: var(--blazor-load-percentage, 0%)"></div>
             </div>
@@ -128,7 +128,7 @@
                     if (navigator.canShare && navigator.canShare({ files: [file] })) {
                         navigator.share({
                             files: [file],
-                            title: 'ShotStack Studio PDF',
+                            title: 'TimelineZLA PDF',
                             text: 'Your compiled PDF document is ready.'
                         }).catch(err => {
                             console.log('User canceled or share failed, falling back to download:', err);
