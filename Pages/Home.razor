@@ -210,8 +210,7 @@
         var job = new Job
         {
             JobId = code,
-            JobName = string.IsNullOrWhiteSpace(newJobName) ? "Untitled Job" : newJobName,
-            ContentHtml = $"<h1>{newJobName}</h1><p>Timeline started at {DateTime.Now:g}</p>"
+            JobName = string.IsNullOrWhiteSpace(newJobName) ? "Untitled Job" : newJobName
         };
 
         await Storage.SaveJobAsync(job);

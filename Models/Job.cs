@@ -6,7 +6,7 @@ namespace TimelineZLA.Models
     {
         public string JobId { get; set; } = string.Empty; // 6-digit code
         public string JobName { get; set; } = string.Empty;
-        public string ContentHtml { get; set; } = string.Empty; // Rich text blob
+        public List<TimelineEntry> Entries { get; set; } = new();
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime LastModified { get; set; } = DateTime.UtcNow;
     }

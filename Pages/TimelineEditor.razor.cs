@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -21,6 +23,7 @@ namespace TimelineZLA.Pages
         private bool isSyncing = false;
         private Job currentJob = new();
         private DotNetObjectReference<TimelineEditor>? dotNetRef;
+        private int lastRenderedEntryCount = 0;
 
         protected override void OnInitialized()
         {
@@ -45,10 +48,8 @@ namespace TimelineZLA.Pages
                     if (job != null)
                     {
                         currentJob = job;
-                        await JSRuntime.InvokeVoidAsync("timelineEditor.setContent", "zla-editor", currentJob.ContentHtml);
                     }
                     
-                    await JSRuntime.InvokeVoidAsync("timelineEditor.init", "zla-editor", dotNetRef);
                     await Sync.InitializeAsync(JobCode); // Listen on specific 6-digit code
                     hasReceivedInitialData = true;
                     StateHasChanged();
@@ -60,72 +61,120 @@ namespace TimelineZLA.Pages
                     await Sync.ConnectToPeerAsync(JobCode);
                 }
             }
+
+            // Initialize any new editor blocks
+            if (currentJob.Entries.Count != lastRenderedEntryCount)
+            {
+                lastRenderedEntryCount = currentJob.Entries.Count;
+                foreach (var entry in currentJob.Entries)
+                {
+                    await JSRuntime.InvokeVoidAsync("timelineEditor.init", $"zla-editor-{entry.Id}", dotNetRef);
+                    if (firstRender && IsHost)
+                    {
+                        await JSRuntime.InvokeVoidAsync("timelineEditor.setContent", $"zla-editor-{entry.Id}", entry.ContentHtml);
+                    }
+                }
+            }
         }
 
-        [JSInvokable]
-        public async Task UpdateContent(string html)
+        private async Task AddNewEntry()
         {
             if (!IsHost) return;
 
-            isSyncing = true;
-            StateHasChanged();
-
-            currentJob.ContentHtml = html;
+            var entry = new TimelineEntry();
+            currentJob.Entries.Add(entry);
             currentJob.LastModified = DateTime.UtcNow;
-            
-            // Auto-save locally
+
             await Storage.SaveJobAsync(currentJob);
+            StateHasChanged(); // This triggers re-render, adding the new card
 
-            // Broadcast to all connected guests
-            var payload = new { type = "timeline_update", html = html };
+            // Broadcast the full updated job state
+            var payload = new { type = "timeline_update", entries = currentJob.Entries };
             await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+        }
 
-            // small delay just for UI feedback
-            await Task.Delay(500);
-            isSyncing = false;
-            StateHasChanged();
+        [JSInvokable]
+        public async Task UpdateContent(string entryId, string html)
+        {
+            if (!IsHost) return;
+
+            var entry = currentJob.Entries.FirstOrDefault(e => e.Id == entryId);
+            if (entry != null && entry.ContentHtml != html)
+            {
+                isSyncing = true;
+                StateHasChanged();
+
+                entry.ContentHtml = html;
+                currentJob.LastModified = DateTime.UtcNow;
+                
+                await Storage.SaveJobAsync(currentJob);
+
+                // Broadcast to all connected guests
+                var payload = new { type = "timeline_update", entries = currentJob.Entries };
+                await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+
+                await Task.Delay(500);
+                isSyncing = false;
+                StateHasChanged();
+            }
+        }
+
+        private async void HandleBlur(string entryId)
+        {
+            // Just an event hook, the real save happens in JS debounce
+            await Task.CompletedTask;
         }
 
         private async void OnPeerConnected(string peerId)
         {
             if (IsHost)
             {
-                // When a guest connects, immediately push current state
-                var payload = new { type = "timeline_update", html = currentJob.ContentHtml };
+                // Push current state to the newly connected guest
+                var payload = new { type = "timeline_update", entries = currentJob.Entries };
                 await Sync.SendDataAsync(peerId, JsonSerializer.Serialize(payload));
             }
             else
             {
-                // We connected to host
                 StateHasChanged();
             }
         }
 
         private async void OnSyncDataReceived(string peerId, string dataStr)
         {
-            if (IsHost) return; // Host only sends, doesn't receive for now
+            if (IsHost) return; // Host only sends for now
 
             try
             {
-                using var doc = JsonDocument.Parse(dataStr);
-                var type = doc.RootElement.GetProperty("type").GetString();
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var document = JsonDocument.Parse(dataStr);
+                var type = document.RootElement.GetProperty("type").GetString();
 
                 if (type == "timeline_update")
                 {
-                    var html = doc.RootElement.GetProperty("html").GetString() ?? "";
-                    
                     isSyncing = true;
                     hasReceivedInitialData = true;
                     StateHasChanged();
 
-                    // Update DOM directly to prevent re-rendering issues
-                    await JSRuntime.InvokeVoidAsync("timelineEditor.setContent", "zla-editor", html);
-                    
-                    // Also save a local backup for the guest
-                    currentJob.JobId = JobCode;
-                    currentJob.ContentHtml = html;
-                    currentJob.LastModified = DateTime.UtcNow;
-                    await Storage.SaveJobAsync(currentJob);
+                    var updatedEntries = JsonSerializer.Deserialize<List<TimelineEntry>>(
+                        document.RootElement.GetProperty("entries").GetRawText(), options);
+
+                    if (updatedEntries != null)
+                    {
+                        currentJob.JobId = JobCode;
+                        currentJob.Entries = updatedEntries;
+                        currentJob.LastModified = DateTime.UtcNow;
+                        await Storage.SaveJobAsync(currentJob);
+
+                        // Give UI a moment to create any new divs
+                        StateHasChanged();
+                        await Task.Delay(50);
+
+                        // Update DOM directly to prevent cursor jumping issues on active typing
+                        foreach (var entry in currentJob.Entries)
+                        {
+                            await JSRuntime.InvokeVoidAsync("timelineEditor.setContent", $"zla-editor-{entry.Id}", entry.ContentHtml);
+                        }
+                    }
 
                     await Task.Delay(300);
                     isSyncing = false;

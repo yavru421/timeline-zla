@@ -45,12 +45,59 @@
         </div>
     }
 
-    <div class="editor-canvas-wrapper">
-        <div id="zla-editor" 
-             class="apple-notes-editor @(IsHost ? "editable" : "readonly")" 
-             contenteditable="@(IsHost ? "true" : "false")"
-             placeholder="Start typing notes, or paste photos here...">
-        </div>
+    <div class="timeline-canvas-wrapper">
+        @if (currentJob.Entries.Count == 0)
+        {
+            <div class="empty-state">
+                <h2>No entries yet</h2>
+                <p>Start documenting the job by adding the first entry.</p>
+                @if (IsHost)
+                {
+                    <button class="btn-primary" @onclick="AddNewEntry">Add First Entry</button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="vertical-timeline">
+                @foreach (var entry in currentJob.Entries.OrderByDescending(e => e.Timestamp))
+                {
+                    <div class="timeline-item" @key="entry.Id">
+                        <div class="timeline-marker">
+                            <div class="marker-dot"></div>
+                            <div class="marker-line"></div>
+                        </div>
+                        <div class="timeline-content">
+                            <div class="timeline-meta">
+                                <span class="time">@entry.Timestamp.ToLocalTime().ToString("MMM dd, yyyy - h:mm tt")</span>
+                            </div>
+                            <div class="card-editor">
+                                <div id="zla-editor-@entry.Id" 
+                                     class="apple-notes-editor @(IsHost ? "editable" : "readonly")" 
+                                     contenteditable="@(IsHost ? "true" : "false")"
+                                     placeholder="Type notes, or paste photos here..."
+                                     @onblur="() => HandleBlur(entry.Id)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @if (IsHost)
+                {
+                    <div class="timeline-item add-new-item">
+                        <div class="timeline-marker">
+                            <div class="marker-dot pulse"></div>
+                        </div>
+                        <div class="timeline-content">
+                            <button class="btn-add-entry" @onclick="AddNewEntry">
+                                <span class="material-icons">add</span> Add Update
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
     </div>
 </div>
 
@@ -181,7 +228,7 @@
         z-index: 50;
     }
 
-    .editor-canvas-wrapper {
+    .timeline-canvas-wrapper {
         flex: 1;
         overflow-y: auto;
         padding: 40px;
@@ -189,13 +236,78 @@
         justify-content: center;
     }
 
-    .apple-notes-editor {
+    .vertical-timeline {
         width: 100%;
         max-width: 800px;
-        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .timeline-item {
+        display: flex;
+        position: relative;
+        margin-bottom: 30px;
+    }
+
+    .timeline-marker {
+        width: 40px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-right: 20px;
+    }
+
+    .marker-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--brand-accent);
+        box-shadow: 0 0 10px rgba(46, 160, 67, 0.5);
+        z-index: 2;
+        margin-top: 5px;
+    }
+
+    .marker-line {
+        width: 2px;
+        flex: 1;
+        background: var(--border-dim);
+        position: absolute;
+        top: 19px;
+        bottom: -35px;
+        left: 19px;
+        z-index: 1;
+    }
+
+    .timeline-item:last-child .marker-line {
+        display: none;
+    }
+
+    .timeline-content {
+        flex: 1;
+        background: var(--bg-card);
+        border: 1px solid var(--border-dim);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+
+    .timeline-meta {
+        margin-bottom: 15px;
+        color: var(--text-dark-muted);
+        font-size: 0.85rem;
+        font-weight: bold;
+        letter-spacing: 1px;
+    }
+
+    .card-editor {
+        min-height: 50px;
+    }
+
+    .apple-notes-editor {
+        width: 100%;
         outline: none;
         color: var(--text-white);
-        font-size: 1.15rem;
+        font-size: 1.05rem;
         line-height: 1.6;
     }
 
@@ -206,16 +318,67 @@
         display: block;
     }
 
-    /* Inline media styling within the editor */
     .apple-notes-editor img {
         max-width: 100%;
-        border-radius: 12px;
-        margin: 20px 0;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        border-radius: 8px;
+        margin: 15px 0;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
     
     .apple-notes-editor h1, .apple-notes-editor h2, .apple-notes-editor h3 {
-        color: var(--brand-accent);
-        margin-top: 1.5em;
+        color: var(--text-white);
+        margin-top: 1em;
+        margin-bottom: 0.5em;
+    }
+
+    .empty-state {
+        text-align: center;
+        margin-top: 100px;
+        color: var(--text-dark-muted);
+    }
+
+    .btn-primary {
+        background: var(--brand-accent);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+        margin-top: 20px;
+        transition: all 0.2s;
+    }
+    
+    .btn-primary:hover {
+        background: #3fb950;
+        box-shadow: 0 0 15px rgba(46, 160, 67, 0.4);
+    }
+
+    .btn-add-entry {
+        background: transparent;
+        color: var(--text-dark-muted);
+        border: 1px dashed var(--border-dim);
+        padding: 15px;
+        border-radius: 8px;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: all 0.2s;
+    }
+
+    .btn-add-entry:hover {
+        color: var(--text-white);
+        border-color: var(--brand-accent);
+        background: rgba(46, 160, 67, 0.1);
+    }
+    
+    .marker-dot.pulse {
+        background: transparent;
+        border: 2px solid var(--text-dark-muted);
+        box-shadow: none;
     }
 </style>

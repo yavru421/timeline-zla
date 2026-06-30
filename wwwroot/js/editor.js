@@ -3,13 +3,18 @@ window.timelineEditor = {
         const editor = document.getElementById(elementId);
         if (!editor) return;
 
+        // Prevent attaching multiple listeners if re-initialized
+        if (editor.dataset.initialized) return;
+        editor.dataset.initialized = "true";
+
         let debounceTimer;
+        const entryId = elementId.replace('zla-editor-', '');
 
         // Listen for typing
         editor.addEventListener('input', function () {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
-                dotNetRef.invokeMethodAsync('UpdateContent', editor.innerHTML);
+                dotNetRef.invokeMethodAsync('UpdateContent', entryId, editor.innerHTML);
             }, 500);
         });
 
@@ -46,7 +51,7 @@ window.timelineEditor = {
                 }
             }
 
-            // If we handled an image, prevent default pasting (so it doesn't paste the raw blob twice)
+            // If we handled an image, prevent default pasting
             if (hasImage) {
                 e.preventDefault();
             }
