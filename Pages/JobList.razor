@@ -1,0 +1,110 @@
+@page "/"
+@using TimelineZLA.Models
+@using TimelineZLA.Services
+@inject TimelineStorageService Storage
+@inject NavigationManager Navigation
+
+<PageTitle>TimelineZLA - Jobs</PageTitle>
+
+<div class="job-list-container" style="max-width: 800px; margin: 0 auto; padding: 20px;">
+    
+    <div class="card create-job-card" style="margin-bottom: 30px;">
+        <h2>Create New Job</h2>
+        <EditForm Model="@newJob" OnValidSubmit="CreateJob">
+            <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
+                <input type="text" @bind="newJob.JobName" placeholder="Job Name" class="zla-input" required />
+                <input type="text" @bind="newJob.ClientName" placeholder="Client Name" class="zla-input" required />
+                <input type="text" @bind="newJob.Address" placeholder="Address" class="zla-input" required />
+                <button type="submit" class="fab-new-doc" style="align-self: flex-start;">
+                    Create Job
+                </button>
+            </div>
+        </EditForm>
+    </div>
+
+    <h2>Active Jobs</h2>
+    @if (isLoading)
+    {
+        <div class="spinner-modern"></div>
+    }
+    else if (jobs.Count == 0)
+    {
+        <p style="color: var(--text-dark-muted);">No jobs found. Create one above to get started.</p>
+    }
+    else
+    {
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            @foreach (var job in jobs.OrderByDescending(j => j.LastModified))
+            {
+                <div class="card job-card" style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" @onclick="() => NavigateToJob(job.JobId)">
+                    <div class="card-header">
+                        <h3 style="margin: 0; color: var(--brand-accent);">@job.JobName</h3>
+                        <span class="location-status ok">ID: @job.JobId</span>
+                    </div>
+                    <p style="margin: 5px 0; font-size: 0.9rem;"><strong>Client:</strong> @job.ClientName</p>
+                    <p style="margin: 5px 0; font-size: 0.9rem;"><strong>Address:</strong> @job.Address</p>
+                    <p style="margin: 5px 0 0 0; font-size: 0.75rem; color: var(--text-dark-muted);">Last Modified: @job.LastModified.ToLocalTime().ToString("g")</p>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .zla-input {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border-dim);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--text-white);
+        font-size: 1rem;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    .zla-input:focus {
+        border-color: var(--brand-accent);
+    }
+    .job-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        border-color: var(--brand-accent);
+    }
+</style>
+
+@code {
+    private List<Job> jobs = new();
+    private Job newJob = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJobs();
+    }
+
+    private async Task LoadJobs()
+    {
+        isLoading = true;
+        jobs = await Storage.GetAllJobsAsync();
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task CreateJob()
+    {
+        // 8-character short ID
+        newJob.JobId = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
+        newJob.CreatedAt = DateTime.UtcNow;
+        newJob.LastModified = DateTime.UtcNow;
+
+        await Storage.SaveJobAsync(newJob);
+        
+        // Reset form
+        newJob = new Job();
+        await LoadJobs();
+    }
+
+    private void NavigateToJob(string jobId)
+    {
+        Navigation.NavigateTo($"/job/{jobId}");
+    }
+}

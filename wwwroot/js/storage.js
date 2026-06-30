@@ -24,5 +24,22 @@ window.timelineStorage = {
             console.error('Error removing data from localforage', err);
             return false;
         }
+    },
+    getAllKeys: async function() {
+        try {
+            return await localforage.keys();
+        } catch (err) {
+            console.error('Error getting keys from localforage', err);
+            return [];
+        }
+    },
+    getKeysWithPrefix: async function(prefix) {
+        try {
+            const keys = await localforage.keys();
+            return keys.filter(k => k.startsWith(prefix));
+        } catch (err) {
+            console.error('Error getting keys with prefix', err);
+            return [];
+        }
     }
 };

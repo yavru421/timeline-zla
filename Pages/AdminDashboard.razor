@@ -1,0 +1,224 @@
+@page "/admin"
+@using TimelineZLA.Models
+@using TimelineZLA.Services
+@using System.Text.Json
+@inject TimelineStorageService Storage
+@inject SyncService Sync
+@inject NavigationManager Navigation
+
+<PageTitle>Admin Dashboard - ZLA Sync</PageTitle>
+
+<div class="admin-container" style="max-width: 1000px; margin: 0 auto; padding: 20px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
+        <div>
+            <h1 style="margin: 0; color: var(--brand-accent);">Master Admin Dashboard</h1>
+            <p style="margin: 5px 0 0 0; color: var(--text-dark-muted);">ZLA Sync: Establish P2P connections to pull field data securely.</p>
+        </div>
+        <div class="network-status @(activeConnections.Count > 0 ? "online" : "offline")" style="padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;">
+            @(activeConnections.Count > 0 ? $"{activeConnections.Count} Connections Active" : "No Connections")
+        </div>
+    </div>
+
+    <!-- P2P Connector Card -->
+    <div class="card" style="margin-bottom: 30px; background: rgba(0,0,0,0.2);">
+        <h3>Connect to Field Worker</h3>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="text" @bind="targetSessionCode" placeholder="Enter 6-digit Session Code..." class="zla-input" style="flex: 1; font-size: 1.2rem; letter-spacing: 2px;" maxlength="6" />
+            <button class="fab-new-doc" @onclick="ConnectToWorker" disabled="@string.IsNullOrWhiteSpace(targetSessionCode)">
+                Connect & Sync
+            </button>
+        </div>
+        @if (!string.IsNullOrEmpty(connectionMessage))
+        {
+            <p style="margin: 10px 0 0 0; font-size: 0.9rem; color: #ffeb3b;">@connectionMessage</p>
+        }
+    </div>
+
+    <!-- Active Connections List -->
+    @if (activeConnections.Count > 0)
+    {
+        <div style="margin-bottom: 30px;">
+            <h3 style="color: var(--text-dark-muted);">Active Sessions</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                @foreach (var conn in activeConnections)
+                {
+                    <span class="badge-persistent" style="background: rgba(35, 134, 54, 0.15); color: #2ea043; padding: 8px 12px; border-radius: 12px; border: 1px solid #2ea043;">
+                        Peer ID: @conn <span class="pulse-dot green" style="display: inline-block; margin-left: 5px;"></span>
+                    </span>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Synced Jobs Grid -->
+    <h2>Synced Jobs</h2>
+    @if (isLoading)
+    {
+        <div class="spinner-modern"></div>
+    }
+    else if (syncedJobs.Count == 0)
+    {
+        <p style="color: var(--text-dark-muted);">No jobs synced yet. Connect to a worker to pull data.</p>
+    }
+    else
+    {
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+            @foreach (var job in syncedJobs.OrderByDescending(j => j.LastModified))
+            {
+                <div class="card job-card" style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" @onclick="() => NavigateToJob(job.JobId)">
+                    <div class="card-header">
+                        <h3 style="margin: 0; color: var(--brand-accent);">@job.JobName</h3>
+                        <span class="location-status ok">ID: @job.JobId</span>
+                    </div>
+                    <p style="margin: 5px 0; font-size: 0.9rem;"><strong>Client:</strong> @job.ClientName</p>
+                    <p style="margin: 5px 0; font-size: 0.9rem;"><strong>Address:</strong> @job.Address</p>
+                    <p style="margin: 5px 0 0 0; font-size: 0.75rem; color: var(--text-dark-muted);">Last Sync: @job.LastModified.ToLocalTime().ToString("g")</p>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .zla-input {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border-dim);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--text-white);
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    .zla-input:focus {
+        border-color: var(--brand-accent);
+    }
+    .job-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        border-color: var(--brand-accent);
+    }
+</style>
+
+@code {
+    private List<Job> syncedJobs = new();
+    private List<string> activeConnections = new();
+    private string targetSessionCode = string.Empty;
+    private string connectionMessage = string.Empty;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSyncedJobs();
+
+        // Admin initializes PeerJS as a passive listener, but doesn't strictly need a custom ID
+        // unless they want to be a known endpoint. Random ID is fine for Admin.
+        Sync.OnConnected += OnPeerConnected;
+        Sync.OnDisconnected += OnPeerDisconnected;
+        Sync.OnDataReceived += OnSyncDataReceived;
+        Sync.OnError += OnSyncError;
+
+        await Sync.InitializeAsync();
+    }
+
+    private async Task LoadSyncedJobs()
+    {
+        isLoading = true;
+        syncedJobs = await Storage.GetAllJobsAsync();
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task ConnectToWorker()
+    {
+        if (string.IsNullOrWhiteSpace(targetSessionCode)) return;
+        
+        connectionMessage = $"Connecting to {targetSessionCode}...";
+        StateHasChanged();
+
+        var success = await Sync.ConnectToPeerAsync(targetSessionCode);
+        if (!success)
+        {
+            connectionMessage = "Connection failed or PeerJS not ready.";
+        }
+    }
+
+    private async void OnPeerConnected(string peerId)
+    {
+        if (!activeConnections.Contains(peerId))
+        {
+            activeConnections.Add(peerId);
+        }
+        connectionMessage = $"Connected to {peerId}. Requesting sync data...";
+        StateHasChanged();
+
+        // Immediately request data from the worker
+        var requestObj = new { type = "sync_request", jobId = "all" };
+        await Sync.SendDataAsync(peerId, JsonSerializer.Serialize(requestObj));
+    }
+
+    private void OnPeerDisconnected(string peerId)
+    {
+        if (activeConnections.Contains(peerId))
+        {
+            activeConnections.Remove(peerId);
+        }
+        StateHasChanged();
+    }
+
+    private void OnSyncError(string error)
+    {
+        connectionMessage = $"Error: {error}";
+        StateHasChanged();
+    }
+
+    private async void OnSyncDataReceived(string peerId, string dataStr)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(dataStr);
+            var type = doc.RootElement.GetProperty("type").GetString();
+
+            if (type == "sync_response")
+            {
+                var jobElement = doc.RootElement.GetProperty("job");
+                var entriesElement = doc.RootElement.GetProperty("entries");
+
+                var job = JsonSerializer.Deserialize<Job>(jobElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var entries = JsonSerializer.Deserialize<List<TimelineEntry>>(entriesElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (job != null && entries != null)
+                {
+                    // ZLA Guardrail: Save job and entries to Admin's local IndexedDB
+                    await Storage.SaveJobAsync(job);
+                    
+                    // Save entries with deduplication built into TimelineStorageService
+                    foreach (var entry in entries)
+                    {
+                        await Storage.SaveEntryAsync(entry);
+                    }
+
+                    connectionMessage = $"Successfully synced job '{job.JobName}' from {peerId} at {DateTime.Now:HH:mm:ss}";
+                    await LoadSyncedJobs(); // Reload the UI
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error processing sync data from {peerId}: {ex.Message}");
+        }
+    }
+
+    private void NavigateToJob(string jobId)
+    {
+        Navigation.NavigateTo($"/job/{jobId}");
+    }
+
+    public void Dispose()
+    {
+        Sync.OnConnected -= OnPeerConnected;
+        Sync.OnDisconnected -= OnPeerDisconnected;
+        Sync.OnDataReceived -= OnSyncDataReceived;
+        Sync.OnError -= OnSyncError;
+    }
+}

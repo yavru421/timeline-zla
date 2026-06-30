@@ -1,0 +1,93 @@
+@page "/job/{JobId}"
+@using TimelineZLA.Components
+@using TimelineZLA.Models
+@using TimelineZLA.Services
+@inject TimelineStorageService Storage
+@inject SyncService Sync
+@inject PdfExportService PdfExport
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Timeline - Job @JobId</PageTitle>
+
+<div class="timeline-container" style="max-width: 800px; margin: 0 auto; padding: 20px;">
+    @if (job == null)
+    {
+        <div class="spinner-modern"></div>
+    }
+    else
+    {
+        <div class="card" style="margin-bottom: 20px; background: rgba(35, 134, 54, 0.1); border-color: var(--brand-accent);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 style="margin: 0; color: var(--brand-accent);">@job.JobName</h2>
+                    <p style="margin: 5px 0 0 0; font-size: 0.9rem; color: var(--text-white);">@job.ClientName - @job.Address</p>
+                </div>
+                <div style="text-align: right;">
+                    <span style="font-size: 0.8rem; color: var(--text-dark-muted); display: block;">Session Code (Peer ID)</span>
+                    <strong style="font-size: 1.5rem; letter-spacing: 2px; color: #fff;">@(myPeerId ?? "...")</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+            <h3 style="margin-top: 0;">Add Entry</h3>
+            <EditForm Model="@newEntry" OnValidSubmit="AddEntry">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <input type="text" @bind="newEntry.Title" placeholder="Entry Title" class="zla-input" required />
+                    <textarea @bind="newEntry.Notes" placeholder="Notes..." class="zla-input" rows="3" required></textarea>
+                    
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <InputFile OnChange="HandleFileSelected" accept="image/*" id="photo-upload" style="display: none;" />
+                        <label for="photo-upload" class="btn-secondary" style="text-align: center; cursor: pointer;">
+                            @(hasImage ? "Change Photo" : "Attach Photo")
+                        </label>
+                        @if (hasImage)
+                        {
+                            <span style="color: var(--brand-accent); font-size: 0.9rem;">Photo attached and compressed ✓</span>
+                        }
+                    </div>
+
+                    <button type="submit" class="fab-new-doc" style="align-self: flex-start; margin-top: 10px;" disabled="@isCompressing">
+                        @(isCompressing ? "Compressing..." : "Post to Timeline")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2>Timeline Entries</h2>
+            <button class="btn-secondary" @onclick="ExportTimeline">Export PDF</button>
+        </div>
+
+        <div id="timeline-export-area" class="timeline-feed" style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 8px; border: 1px solid var(--border-dim);">
+            @if (entries.Count == 0)
+            {
+                <p style="color: var(--text-dark-muted); text-align: center;">No entries yet.</p>
+            }
+            else
+            {
+                @foreach (var entry in entries)
+                {
+                    <TimelineEntryCard Title="@entry.Title" Timestamp="@entry.Timestamp.ToLocalTime()" Notes="@entry.Notes" ImageUrl="@entry.ImageUrl" />
+                }
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .zla-input {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border-dim);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--text-white);
+        font-size: 1rem;
+        outline: none;
+        transition: border-color 0.2s;
+        font-family: inherit;
+    }
+    .zla-input:focus {
+        border-color: var(--brand-accent);
+    }
+</style>
