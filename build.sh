@@ -11,6 +11,7 @@ chmod +x dotnet-install.sh
 
 # Install .NET SDK 10.0 locally
 ./dotnet-install.sh -c 10.0 -InstallDir ./dotnet
+chmod -R +x ./dotnet/
 
 # Clean old output to prevent stale files
 rm -rf output
