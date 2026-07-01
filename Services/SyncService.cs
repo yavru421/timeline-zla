@@ -14,6 +14,7 @@ namespace TimelineZLA.Services
         public event Action<string>? OnDisconnected;
         public event Action<string, string>? OnDataReceived;
         public event Action<string>? OnError;
+        public event Action<int, int>? OnRetrying;
 
         public SyncService(IJSRuntime jsRuntime)
         {
@@ -74,6 +75,12 @@ namespace TimelineZLA.Services
         public void OnErrorCallback(string errorMessage)
         {
             OnError?.Invoke(errorMessage);
+        }
+
+        [JSInvokable("OnRetrying")]
+        public void OnRetryingCallback(int attempt, int max)
+        {
+            OnRetrying?.Invoke(attempt, max);
         }
 
         public void Dispose()

@@ -54,9 +54,19 @@
     @if (!IsHost && !hasReceivedInitialData)
     {
         <div class="guest-waiting-overlay">
-            <div class="spinner-modern"></div>
-            <h3>Connecting to Host...</h3>
-            <p>Waiting for P2P connection to @JobCode</p>
+            @if (connectionError != null)
+            {
+                <div class="conn-error-icon"><span class="material-icons">wifi_off</span></div>
+                <h3>Connection Failed</h3>
+                <p class="conn-error-msg">@connectionError</p>
+                <button class="btn-primary" @onclick="RetryConnection">Try Again</button>
+            }
+            else
+            {
+                <div class="spinner-modern"></div>
+                <h3>@connectionStatus</h3>
+                <p>Waiting for P2P connection to @JobCode</p>
+            }
         </div>
     }
 
@@ -318,6 +328,20 @@
         align-items: center;
         justify-content: center;
         z-index: 50;
+        gap: 12px;
+    }
+
+    .conn-error-icon .material-icons {
+        font-size: 3rem;
+        color: #f85149;
+    }
+
+    .conn-error-msg {
+        color: #f85149;
+        font-size: 0.95rem;
+        text-align: center;
+        max-width: 320px;
+        line-height: 1.5;
     }
 
     .timeline-canvas-wrapper {

@@ -26,6 +26,8 @@ namespace TimelineZLA.Pages
         private DotNetObjectReference<TimelineEditor>? dotNetRef;
         private int lastRenderedEntryCount = 0;
         private string? pendingHostConnect = null; // Guest: connect after PeerJS open fires
+        private string connectionStatus = "Connecting to Host...";
+        private string? connectionError = null;
 
         protected override void OnInitialized()
         {
@@ -37,6 +39,8 @@ namespace TimelineZLA.Pages
             Sync.OnDataReceived += OnSyncDataReceived;
             Sync.OnConnected += OnPeerConnected;
             Sync.OnPeerIdGenerated += OnGuestPeerReady;
+            Sync.OnRetrying += OnConnectionRetrying;
+            Sync.OnError += OnConnectionError;
             dotNetRef = DotNetObjectReference.Create(this);
         }
 
@@ -182,8 +186,24 @@ namespace TimelineZLA.Pages
             {
                 var targetCode = pendingHostConnect;
                 pendingHostConnect = null;
+                connectionStatus = "Connecting to Host...";
+                connectionError = null;
+                StateHasChanged();
                 await Sync.ConnectToPeerAsync(targetCode);
             }
+        }
+
+        private void OnConnectionRetrying(int attempt, int max)
+        {
+            connectionStatus = $"Host not reachable. Retrying ({attempt}/{max})...";
+            connectionError = null;
+            InvokeAsync(StateHasChanged);
+        }
+
+        private void OnConnectionError(string error)
+        {
+            connectionError = error;
+            InvokeAsync(StateHasChanged);
         }
 
         private async void OnSyncDataReceived(string peerId, string dataStr)
@@ -234,6 +254,16 @@ namespace TimelineZLA.Pages
             }
         }
 
+        private async Task RetryConnection()
+        {
+            if (IsHost) return;
+            connectionError = null;
+            connectionStatus = "Reconnecting...";
+            StateHasChanged();
+            pendingHostConnect = JobCode;
+            await Sync.InitializeAsync(); // Re-creates the Peer object fresh
+        }
+
         private void GoHome()
         {
             Navigation.NavigateTo("/");
@@ -255,6 +285,8 @@ namespace TimelineZLA.Pages
             Sync.OnDataReceived -= OnSyncDataReceived;
             Sync.OnConnected -= OnPeerConnected;
             Sync.OnPeerIdGenerated -= OnGuestPeerReady;
+            Sync.OnRetrying -= OnConnectionRetrying;
+            Sync.OnError -= OnConnectionError;
             dotNetRef?.Dispose();
         }
     }
