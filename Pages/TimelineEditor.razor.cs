@@ -44,14 +44,18 @@ namespace TimelineZLA.Pages
             {
                 if (IsHost)
                 {
-                    // Host Mode: Load job and start listening
+                    // Host Mode: Load job and start listening IMMEDIATELY
+                    // PeerJS must be initialized right away so guests can connect via share link
                     var job = await Storage.GetJobAsync(JobCode);
                     if (job != null)
                     {
                         currentJob = job;
                     }
                     
-                    // Do not initialize Sync until host explicitly opens the lobby
+                    // Auto-open the lobby so guests can connect without host having to toggle
+                    lobbyIsOpen = true;
+                    await Sync.InitializeAsync(JobCode);
+                    
                     hasReceivedInitialData = true;
                     StateHasChanged();
                 }
@@ -85,10 +89,12 @@ namespace TimelineZLA.Pages
             lobbyIsOpen = !lobbyIsOpen;
             if (lobbyIsOpen)
             {
+                // Re-initialize PeerJS if it was previously disconnected
                 await Sync.InitializeAsync(JobCode);
             }
             else
             {
+                // Disconnect all guests and stop listening
                 await Sync.DisconnectAsync();
                 isSyncing = false;
             }
