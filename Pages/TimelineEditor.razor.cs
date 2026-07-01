@@ -51,6 +51,13 @@ namespace TimelineZLA.Pages
         private DateTime? lastSavedAt = null;
         private Timer? _heartbeatTimer;
 
+        // --- File sharing panel ---
+        private List<SharedFile> sharedFiles = new();
+        private bool showFilesPanel = false;
+        private bool isProcessingFiles = false;
+        private string fileStatus = string.Empty;
+        private string? savedEntryId = null; // brief "Saved" flash per entry
+
         protected override void OnInitialized()
         {
             if (!string.IsNullOrEmpty(Role) && Role.ToLower() == "guest")
@@ -103,6 +110,12 @@ namespace TimelineZLA.Pages
                         await JSRuntime.InvokeVoidAsync("timelineEditor.setContent", $"zla-editor-{entry.Id}", entry.ContentHtml);
                     }
                 }
+            }
+
+            // Wire up drag-drop zone whenever the panel is visible
+            if (IsHost && showFilesPanel)
+            {
+                try { await InitDropZone(); } catch { }
             }
         }
 
@@ -246,8 +259,24 @@ namespace TimelineZLA.Pages
                 try { await JSRuntime.InvokeVoidAsync("zlaInterop.playConnectSound"); } catch { }
 
                 // Push full current state to newly joined guest
-                var payload = new { type = "timeline_update", entries = currentJob.Entries };
-                await Sync.SendDataAsync(peerId, JsonSerializer.Serialize(payload));
+                var timelinePayload = new { type = "timeline_update", entries = currentJob.Entries };
+                await Sync.SendDataAsync(peerId, JsonSerializer.Serialize(timelinePayload));
+
+                // Also push all currently shared files to the new guest
+                foreach (var file in sharedFiles)
+                {
+                    var filePayload = new
+                    {
+                        type = "file_share_add",
+                        id = file.Id,
+                        name = file.Name,
+                        mimeType = file.MimeType,
+                        base64Data = file.Base64Data,
+                        sizeBytes = file.SizeBytes
+                    };
+                    await Sync.SendDataAsync(peerId, JsonSerializer.Serialize(filePayload));
+                }
+
                 await InvokeAsync(StateHasChanged);
             }
             else
@@ -342,6 +371,30 @@ namespace TimelineZLA.Pages
                     isSyncing = false;
                     StateHasChanged();
                 }
+                else if (type == "file_share_add")
+                {
+                    // Guest receives a new shared file from the host
+                    var file = new SharedFile
+                    {
+                        Id          = document.RootElement.GetProperty("id").GetString() ?? Guid.NewGuid().ToString(),
+                        Name        = document.RootElement.GetProperty("name").GetString() ?? "file",
+                        MimeType    = document.RootElement.GetProperty("mimeType").GetString() ?? "application/octet-stream",
+                        Base64Data  = document.RootElement.GetProperty("base64Data").GetString() ?? string.Empty,
+                        SizeBytes   = document.RootElement.GetProperty("sizeBytes").GetInt64()
+                    };
+                    if (!sharedFiles.Any(f => f.Id == file.Id))
+                    {
+                        sharedFiles.Add(file);
+                        showFilesPanel = true;
+                    }
+                    await InvokeAsync(StateHasChanged);
+                }
+                else if (type == "file_share_remove")
+                {
+                    var fileId = document.RootElement.GetProperty("fileId").GetString();
+                    sharedFiles.RemoveAll(f => f.Id == fileId);
+                    await InvokeAsync(StateHasChanged);
+                }
             }
             catch (Exception ex)
             {
@@ -350,6 +403,121 @@ namespace TimelineZLA.Pages
         }
 
         // ─── Retry connection ─────────────────────────────────────────────────────
+        // ─── Explicit Save Entry button ───────────────────────────────────────────
+        private async Task SaveEntry(string entryId)
+        {
+            var html = await JSRuntime.InvokeAsync<string>("timelineEditor.getContent", $"zla-editor-{entryId}");
+            await UpdateContent(entryId, html);
+            savedEntryId = entryId;
+            StateHasChanged();
+            await Task.Delay(1800);
+            savedEntryId = null;
+            StateHasChanged();
+        }
+
+        // ─── File sharing panel — host picks files ────────────────────────────────
+        private void ToggleFilesPanel() => showFilesPanel = !showFilesPanel;
+
+        private async Task OpenFilePicker()
+        {
+            await JSRuntime.InvokeVoidAsync("zlaFileShare.openPicker", dotNetRef, "files");
+        }
+
+        private async Task OpenFolderPicker()
+        {
+            await JSRuntime.InvokeVoidAsync("zlaFileShare.openPicker", dotNetRef, "folder");
+        }
+
+        private async Task InitDropZone()
+        {
+            await JSRuntime.InvokeVoidAsync("zlaFileShare.initDropZone", "file-drop-zone", dotNetRef);
+        }
+
+        // Called by JS after file picker processing starts
+        [JSInvokable]
+        public void OnFileShareStart(int total)
+        {
+            isProcessingFiles = true;
+            fileStatus = $"Processing 0 / {total}...";
+            InvokeAsync(StateHasChanged);
+        }
+
+        // Called by JS as each file completes
+        [JSInvokable]
+        public void OnFileShareProgress(int done, int total, string fileName)
+        {
+            fileStatus = $"Processing {done} / {total}: {fileName}";
+            InvokeAsync(StateHasChanged);
+        }
+
+        // Called by JS for each successfully processed file
+        [JSInvokable]
+        public async Task OnFileShareReceived(string name, string mimeType, string base64Data, long sizeBytes)
+        {
+            var file = new SharedFile
+            {
+                Name = name,
+                MimeType = mimeType,
+                Base64Data = base64Data,
+                SizeBytes = sizeBytes
+            };
+            sharedFiles.Add(file);
+
+            // Broadcast to all connected guests
+            if (lobbyIsOpen)
+            {
+                var payload = new
+                {
+                    type = "file_share_add",
+                    id = file.Id,
+                    name = file.Name,
+                    mimeType = file.MimeType,
+                    base64Data = file.Base64Data,
+                    sizeBytes = file.SizeBytes
+                };
+                await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+
+        // Called by JS if a file was skipped (too large)
+        [JSInvokable]
+        public void OnFileShareSkipped(string name, string reason)
+        {
+            fileStatus = $"Skipped '{name}': {reason}";
+            InvokeAsync(StateHasChanged);
+        }
+
+        // Called by JS when all files are done
+        [JSInvokable]
+        public void OnFileShareDone()
+        {
+            isProcessingFiles = false;
+            fileStatus = string.Empty;
+            showFilesPanel = true;
+            InvokeAsync(StateHasChanged);
+        }
+
+        // Host removes a file from the shared list
+        private async Task RemoveSharedFile(string fileId)
+        {
+            sharedFiles.RemoveAll(f => f.Id == fileId);
+            if (lobbyIsOpen)
+            {
+                var payload = new { type = "file_share_remove", fileId };
+                await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+            }
+            StateHasChanged();
+        }
+
+        // Guest (or host) downloads a file locally
+        private async Task DownloadSharedFile(SharedFile file)
+        {
+            await JSRuntime.InvokeVoidAsync("zlaFileShare.downloadFile",
+                file.Name, file.MimeType, file.Base64Data);
+        }
+
         private async Task RetryConnection()
         {
             if (IsHost) return;

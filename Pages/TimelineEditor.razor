@@ -100,6 +100,101 @@
         </div>
     }
 
+    @* ── Shared Files Panel ─────────────────────────────────────────────── *@
+    <div class="files-panel @(showFilesPanel ? "panel-open" : "")">
+        <div class="files-panel-header" @onclick="ToggleFilesPanel">
+            <div class="files-panel-title">
+                <span class="material-icons">folder_shared</span>
+                <span>Shared Files</span>
+                @if (sharedFiles.Any())
+                {
+                    <span class="file-count-badge">@sharedFiles.Count</span>
+                }
+                @if (isProcessingFiles)
+                {
+                    <div class="spinner-modern small"></div>
+                    <span class="processing-label">@fileStatus</span>
+                }
+            </div>
+            <div class="files-panel-actions" @onclick:stopPropagation="true">
+                @if (IsHost)
+                {
+                    <button class="panel-action-btn" @onclick="OpenFilePicker" title="Attach files" disabled="@isProcessingFiles">
+                        <span class="material-icons">attach_file</span>
+                        Files
+                    </button>
+                    <button class="panel-action-btn" @onclick="OpenFolderPicker" title="Upload folder" disabled="@isProcessingFiles">
+                        <span class="material-icons">folder_open</span>
+                        Folder
+                    </button>
+                }
+                <span class="material-icons chevron">@(showFilesPanel ? "expand_less" : "expand_more")</span>
+            </div>
+        </div>
+
+        @if (showFilesPanel)
+        {
+            <div class="files-panel-body">
+                @if (!sharedFiles.Any() && !isProcessingFiles)
+                {
+                    @if (IsHost)
+                    {
+                        <div class="drop-zone" id="file-drop-zone"
+                             @onclick="OpenFilePicker">
+                            <span class="material-icons drop-icon">cloud_upload</span>
+                            <p>Drop files here, or click to browse</p>
+                            <p class="drop-sub">Images • PDFs • Audio • Video • Docs</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="no-files-msg">
+                            <span class="material-icons">hourglass_empty</span>
+                            <p>No files shared yet. Waiting for host...</p>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="file-list">
+                        @foreach (var file in sharedFiles)
+                        {
+                            <div class="file-row">
+                                <span class="material-icons file-icon">@file.Icon</span>
+                                <div class="file-info">
+                                    <span class="file-name">@file.Name</span>
+                                    <span class="file-size">@file.FriendlySize</span>
+                                </div>
+                                <div class="file-row-actions">
+                                    <button class="file-action-btn download" @onclick="() => DownloadSharedFile(file)" title="Download">
+                                        <span class="material-icons">download</span>
+                                    </button>
+                                    @if (IsHost)
+                                    {
+                                        <button class="file-action-btn remove" @onclick="() => RemoveSharedFile(file.Id)" title="Remove from shared list">
+                                            <span class="material-icons">close</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (IsHost)
+                    {
+                        <div class="add-more-row">
+                            <button class="panel-action-btn" @onclick="OpenFilePicker" disabled="@isProcessingFiles">
+                                <span class="material-icons">add</span> Add Files
+                            </button>
+                            <button class="panel-action-btn" @onclick="OpenFolderPicker" disabled="@isProcessingFiles">
+                                <span class="material-icons">folder_open</span> Add Folder
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+
     <div class="timeline-canvas-wrapper" id="timeline-export-root">
         @if (currentJob.Entries.Count == 0)
         {
@@ -140,6 +235,17 @@
                                           title="@(IsHost ? "Tap to edit timestamp" : "")">
                                         @entry.Timestamp.ToLocalTime().ToString("MMM dd, yyyy - h:mm tt")
                                     </span>
+                                }
+
+                                @* Save Entry button *@
+                                @if (IsHost)
+                                {
+                                    <button class="btn-save-entry @(savedEntryId == entry.Id ? "saved" : "")"
+                                            @onclick="() => SaveEntry(entry.Id)"
+                                            title="Save entry now">
+                                        <span class="material-icons">@(savedEntryId == entry.Id ? "check" : "save")</span>
+                                        @(savedEntryId == entry.Id ? "Saved" : "Save")
+                                    </button>
                                 }
 
                                 @* Feature #1: Delete individual entry *@
@@ -643,5 +749,204 @@
         background: transparent;
         border: 2px solid var(--text-dark-muted);
         box-shadow: none;
+    }
+
+    /* ── Save Entry button ─────────────────────────────────────────────────── */
+    .btn-save-entry {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: var(--text-dark-muted);
+        padding: 3px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.78rem;
+        font-weight: bold;
+        transition: all 0.2s;
+    }
+    .btn-save-entry .material-icons { font-size: 0.95rem; color: inherit; }
+    .btn-save-entry:hover { color: var(--text-white); border-color: rgba(255,255,255,0.25); }
+    .btn-save-entry.saved {
+        color: #2ea043;
+        border-color: rgba(46,160,67,0.4);
+        background: rgba(46,160,67,0.1);
+    }
+
+    /* ── Shared Files Panel ───────────────────────────────────────────────── */
+    .files-panel {
+        background: rgba(0,0,0,0.3);
+        border-bottom: 1px solid var(--border-dim);
+    }
+
+    .files-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 30px;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .files-panel-header:hover { background: rgba(255,255,255,0.02); }
+
+    .files-panel-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.88rem;
+        font-weight: bold;
+        color: var(--text-dark-muted);
+    }
+    .files-panel-title .material-icons { color: #58a6ff; font-size: 1.1rem; }
+    .panel-open .files-panel-title { color: var(--text-white); }
+
+    .file-count-badge {
+        background: rgba(88,166,255,0.2);
+        color: #58a6ff;
+        font-size: 0.7rem;
+        font-weight: bold;
+        padding: 1px 7px;
+        border-radius: 10px;
+    }
+
+    .processing-label {
+        font-size: 0.75rem;
+        color: #58a6ff;
+        font-weight: normal;
+        font-style: italic;
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .spinner-modern.small {
+        width: 14px; height: 14px;
+        border-width: 2px;
+    }
+
+    .files-panel-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .panel-action-btn {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        background: rgba(88,166,255,0.1);
+        border: 1px solid rgba(88,166,255,0.25);
+        color: #58a6ff;
+        padding: 5px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: bold;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .panel-action-btn .material-icons { font-size: 1rem; color: inherit; }
+    .panel-action-btn:hover { background: rgba(88,166,255,0.2); }
+    .panel-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .chevron { color: var(--text-dark-muted); font-size: 1.1rem; }
+
+    .files-panel-body {
+        padding: 0 30px 16px;
+        animation: fadeIn 0.2s ease;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+        border: 2px dashed rgba(88,166,255,0.3);
+        border-radius: 10px;
+        padding: 32px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: var(--text-dark-muted);
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+        border-color: #58a6ff;
+        background: rgba(88,166,255,0.05);
+        color: var(--text-white);
+    }
+    .drop-icon { font-size: 2.5rem; color: #58a6ff; margin-bottom: 8px; display: block; }
+    .drop-sub { font-size: 0.8rem; opacity: 0.6; margin-top: 4px; }
+
+    /* No files */
+    .no-files-msg {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 16px;
+        color: var(--text-dark-muted);
+        font-size: 0.88rem;
+        font-style: italic;
+    }
+
+    /* File list */
+    .file-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .file-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 8px;
+        transition: background 0.15s;
+    }
+    .file-row:hover { background: rgba(255,255,255,0.06); }
+
+    .file-icon { color: #58a6ff; font-size: 1.3rem; flex-shrink: 0; }
+
+    .file-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .file-name {
+        color: var(--text-white);
+        font-size: 0.88rem;
+        font-weight: bold;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .file-size { color: var(--text-dark-muted); font-size: 0.75rem; }
+
+    .file-row-actions { display: flex; gap: 6px; }
+
+    .file-action-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        transition: all 0.2s;
+    }
+    .file-action-btn .material-icons { font-size: 1.1rem; }
+    .file-action-btn.download { color: #58a6ff; }
+    .file-action-btn.download:hover { background: rgba(88,166,255,0.15); }
+    .file-action-btn.remove { color: var(--text-dark-muted); }
+    .file-action-btn.remove:hover { color: #f85149; background: rgba(248,81,73,0.1); }
+
+    .add-more-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
     }
 </style>
