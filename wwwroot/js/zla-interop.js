@@ -26,5 +26,29 @@ window.zlaInterop = {
             console.error('Failed to copy', err);
             return false;
         }
+    },
+
+    // Feature #7: Pleasant 2-tone chime when a guest connects
+    playConnectSound: function () {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const playTone = (freq, startTime, duration, volume = 0.25) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(volume, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            };
+            const t = ctx.currentTime;
+            playTone(880, t, 0.18);
+            playTone(1100, t + 0.18, 0.25);
+        } catch (e) {
+            // Audio not available — silent fail
+        }
     }
 };

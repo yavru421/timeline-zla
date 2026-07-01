@@ -1,6 +1,7 @@
 @page "/"
 @using TimelineZLA.Models
 @using TimelineZLA.Services
+@using Microsoft.AspNetCore.Components.Web
 @inject TimelineStorageService Storage
 @inject NavigationManager Navigation
 
@@ -54,7 +55,33 @@
                     {
                         <div class="job-item">
                             <div class="job-info" @onclick="() => ResumeJob(job.JobId)">
-                                <span class="job-name">@job.JobName</span>
+                                @if (editingJobId == job.JobId)
+                                {
+                                    <input class="job-name-input"
+                                           type="text"
+                                           value="@editingJobName"
+                                           @oninput="e => editingJobName = e.Value?.ToString() ?? string.Empty"
+                                           @onblur="SaveJobName"
+                                           @onkeydown="HandleJobNameKeydown"
+                                           @onclick:stopPropagation="true"
+                                           maxlength="60" />
+                                }
+                                else
+                                {
+                                    <div class="job-name-row">
+                                        <span class="job-name">@job.JobName</span>
+                                        <button class="btn-rename" title="Rename"
+                                                @onclick:stopPropagation="true"
+                                                @onclick="() => StartRenameJob(job.JobId, job.JobName)">
+                                            <span class="material-icons">edit</span>
+                                        </button>
+                                    </div>
+                                }
+                                <div class="job-stats">
+                                    <span>@job.Entries.Count @(job.Entries.Count == 1 ? "entry" : "entries")</span>
+                                    <span class="stat-sep">•</span>
+                                    <span>@FormatRelativeTime(job.LastModified)</span>
+                                </div>
                                 <span class="job-code">@job.JobId</span>
                             </div>
                             <div class="job-meta">
@@ -277,7 +304,52 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
+        flex: 1;
+        min-width: 0;
     }
+
+    .job-name-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .btn-rename {
+        background: transparent;
+        border: none;
+        color: rgba(255,255,255,0.2);
+        cursor: pointer;
+        padding: 2px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        transition: color 0.2s;
+        opacity: 0;
+    }
+    .job-item:hover .btn-rename { opacity: 1; }
+    .btn-rename:hover { color: var(--text-white); }
+    .btn-rename .material-icons { font-size: 0.9rem; color: inherit; }
+
+    .job-name-input {
+        background: rgba(0,0,0,0.4);
+        border: 1px solid rgba(88,166,255,0.5);
+        border-radius: 6px;
+        padding: 4px 10px;
+        color: white;
+        font-size: 1.1rem;
+        font-weight: bold;
+        outline: none;
+        width: 100%;
+    }
+
+    .job-stats {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.78rem;
+        color: var(--text-dark-muted);
+    }
+    .stat-sep { opacity: 0.4; }
 
     .job-name {
         color: var(--text-white);
@@ -369,6 +441,10 @@
     private List<Job> savedJobs = new();
     private string? deleteConfirmId = null;
 
+    // Feature #2: Inline job rename
+    private string? editingJobId = null;
+    private string editingJobName = string.Empty;
+
     protected override async Task OnInitializedAsync()
     {
         savedJobs = await Storage.GetAllJobsAsync();
@@ -400,20 +476,49 @@
         Navigation.NavigateTo($"/job/{jobId}");
     }
 
-    private void RequestDelete(string jobId)
-    {
-        deleteConfirmId = jobId;
-    }
-
-    private void CancelDelete()
-    {
-        deleteConfirmId = null;
-    }
+    private void RequestDelete(string jobId) => deleteConfirmId = jobId;
+    private void CancelDelete() => deleteConfirmId = null;
 
     private async Task ConfirmDelete(string jobId)
     {
         await Storage.DeleteJobAsync(jobId);
         savedJobs.RemoveAll(j => j.JobId == jobId);
         deleteConfirmId = null;
+    }
+
+    // Feature #2: Inline job name editing
+    private void StartRenameJob(string jobId, string currentName)
+    {
+        editingJobId = jobId;
+        editingJobName = currentName;
+    }
+
+    private async Task SaveJobName()
+    {
+        if (editingJobId == null) return;
+        var job = savedJobs.FirstOrDefault(j => j.JobId == editingJobId);
+        if (job != null && !string.IsNullOrWhiteSpace(editingJobName))
+        {
+            job.JobName = editingJobName.Trim();
+            await Storage.SaveJobAsync(job);
+        }
+        editingJobId = null;
+    }
+
+    private async Task HandleJobNameKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveJobName();
+        if (e.Key == "Escape") editingJobId = null;
+    }
+
+    // Feature #5: Relative time helper
+    private static string FormatRelativeTime(DateTime utc)
+    {
+        var elapsed = DateTime.UtcNow - utc;
+        if (elapsed.TotalSeconds < 60) return "just now";
+        if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}m ago";
+        if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours}h ago";
+        if (elapsed.TotalDays < 7) return $"{(int)elapsed.TotalDays}d ago";
+        return utc.ToLocalTime().ToString("MMM dd");
     }
 }

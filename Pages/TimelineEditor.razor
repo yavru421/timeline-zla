@@ -29,7 +29,7 @@
                 </div>
             }
         </div>
-        
+
         <div class="header-center">
             <div class="code-display">
                 <span class="label">JOB CODE</span>
@@ -41,20 +41,50 @@
         </div>
 
         <div class="header-right">
+            @* Feature #4: Show connected guest chips for host *@
+            @if (IsHost && connectedGuests.Any())
+            {
+                <div class="guest-chips">
+                    @foreach (var kv in connectedGuests)
+                    {
+                        <div class="guest-chip" title="@kv.Value">@GetInitials(kv.Value)</div>
+                    }
+                </div>
+            }
             <button class="icon-btn tooltip-btn" @onclick="ExportPdf" title="Export Timeline to PDF">
                 <span class="material-icons">picture_as_pdf</span>
             </button>
             <div class="sync-status @(isSyncing ? "sync-active" : "")">
                 <span class="pulse-dot"></span>
-                <span>@(isSyncing ? "Syncing..." : "Live")</span>
+                @* Feature #3: Saved heartbeat *@
+                <span>@(isSyncing ? "Syncing..." : FormatSavedTime())</span>
             </div>
         </div>
     </div>
 
+    @* Guest waiting overlay — name prompt → spinner → error *@
     @if (!IsHost && !hasReceivedInitialData)
     {
         <div class="guest-waiting-overlay">
-            @if (connectionError != null)
+            @if (showGuestNamePrompt)
+            {
+                <span class="material-icons overlay-icon">badge</span>
+                <h3>Join Job @JobCode</h3>
+                <p class="overlay-sub">Enter your name so the host knows who's connected.</p>
+                <input class="guest-name-input"
+                       type="text"
+                       placeholder="Your name..."
+                       maxlength="24"
+                       @bind="guestDisplayName"
+                       @bind:event="oninput"
+                       @onkeydown="HandleNameKeydown" />
+                <button class="btn-primary connect-btn"
+                        @onclick="StartGuestConnection"
+                        disabled="@(string.IsNullOrWhiteSpace(guestDisplayName))">
+                    Connect
+                </button>
+            }
+            else if (connectionError != null)
             {
                 <div class="conn-error-icon"><span class="material-icons">wifi_off</span></div>
                 <h3>Connection Failed</h3>
@@ -94,11 +124,48 @@
                         </div>
                         <div class="timeline-content">
                             <div class="timeline-meta">
-                                <span class="time">@entry.Timestamp.ToLocalTime().ToString("MMM dd, yyyy - h:mm tt")</span>
+                                @* Feature #6: Tap timestamp to edit *@
+                                @if (IsHost && editingTimestampId == entry.Id)
+                                {
+                                    <input type="datetime-local"
+                                           class="timestamp-input"
+                                           value="@entry.Timestamp.ToLocalTime().ToString("yyyy-MM-ddTHH:mm")"
+                                           @onchange="e => SaveTimestamp(entry.Id, e)"
+                                           @onblur="CancelTimestampEdit" />
+                                }
+                                else
+                                {
+                                    <span class="time @(IsHost ? "time-editable" : "")"
+                                          @onclick="() => StartEditTimestamp(entry.Id)"
+                                          title="@(IsHost ? "Tap to edit timestamp" : "")">
+                                        @entry.Timestamp.ToLocalTime().ToString("MMM dd, yyyy - h:mm tt")
+                                    </span>
+                                }
+
+                                @* Feature #1: Delete individual entry *@
+                                @if (IsHost)
+                                {
+                                    @if (deleteConfirmEntryId == entry.Id)
+                                    {
+                                        <div class="entry-delete-confirm">
+                                            <span class="confirm-text">Delete?</span>
+                                            <button class="btn-confirm-yes" @onclick="() => ConfirmDeleteEntry(entry.Id)">Yes</button>
+                                            <button class="btn-confirm-no" @onclick="CancelDeleteEntry">No</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-delete-entry" title="Delete entry"
+                                                @onclick="() => RequestDeleteEntry(entry.Id)"
+                                                @onclick:stopPropagation="true">
+                                            <span class="material-icons">delete_outline</span>
+                                        </button>
+                                    }
+                                }
                             </div>
                             <div class="card-editor">
-                                <div id="zla-editor-@entry.Id" 
-                                     class="apple-notes-editor @(IsHost ? "editable" : "readonly")" 
+                                <div id="zla-editor-@entry.Id"
+                                     class="apple-notes-editor @(IsHost ? "editable" : "readonly")"
                                      contenteditable="@(IsHost ? "true" : "false")"
                                      placeholder="Type notes, or paste photos here..."
                                      @onblur="() => HandleBlur(entry.Id)">
@@ -178,9 +245,7 @@
         justify-content: center;
     }
 
-    .icon-btn:hover {
-        background: rgba(255,255,255,0.1);
-    }
+    .icon-btn:hover { background: rgba(255,255,255,0.1); }
 
     .status-badge {
         font-size: 0.75rem;
@@ -218,27 +283,43 @@
         margin-right: 8px;
     }
 
-    .share-btn {
-        padding: 4px;
-        background: rgba(255,255,255,0.05);
-    }
-    
-    .share-btn .material-icons {
-        font-size: 1.1rem;
-        color: var(--brand-accent);
+    .share-btn { padding: 4px; background: rgba(255,255,255,0.05); }
+    .share-btn .material-icons { font-size: 1.1rem; color: var(--brand-accent); }
+
+    /* Feature #4: Guest chips */
+    .guest-chips {
+        display: flex;
+        gap: 6px;
+        align-items: center;
     }
 
+    .guest-chip {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: rgba(88, 166, 255, 0.2);
+        border: 1px solid rgba(88, 166, 255, 0.4);
+        color: #58a6ff;
+        font-size: 0.65rem;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: default;
+        animation: fadeIn 0.3s ease;
+    }
+
+    /* Feature #3: Sync status */
     .sync-status {
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         color: var(--text-dark-muted);
+        white-space: nowrap;
     }
 
-    .sync-status.sync-active {
-        color: #2ea043;
-    }
+    .sync-status.sync-active { color: #2ea043; }
 
     .office-hours-toggle {
         display: flex;
@@ -252,48 +333,31 @@
         transition: all 0.3s;
     }
 
-    .office-hours-toggle.open {
-        border-color: rgba(46, 160, 67, 0.5);
-        background: rgba(46, 160, 67, 0.1);
-    }
-
-    .office-hours-toggle.closed {
-        border-color: rgba(248, 81, 73, 0.5);
-        background: rgba(248, 81, 73, 0.1);
-    }
+    .office-hours-toggle.open { border-color: rgba(46,160,67,0.5); background: rgba(46,160,67,0.1); }
+    .office-hours-toggle.closed { border-color: rgba(248,81,73,0.5); background: rgba(248,81,73,0.1); }
 
     .toggle-track {
-        width: 36px;
-        height: 20px;
+        width: 36px; height: 20px;
         background: rgba(255,255,255,0.2);
         border-radius: 10px;
         position: relative;
         transition: all 0.3s;
     }
 
-    .office-hours-toggle.open .toggle-track {
-        background: #2ea043;
-    }
-
-    .office-hours-toggle.closed .toggle-track {
-        background: #f85149;
-    }
+    .office-hours-toggle.open .toggle-track { background: #2ea043; }
+    .office-hours-toggle.closed .toggle-track { background: #f85149; }
 
     .toggle-knob {
-        width: 16px;
-        height: 16px;
+        width: 16px; height: 16px;
         background: white;
         border-radius: 50%;
         position: absolute;
-        top: 2px;
-        left: 2px;
+        top: 2px; left: 2px;
         transition: all 0.3s;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
 
-    .office-hours-toggle.open .toggle-knob {
-        left: 18px;
-    }
+    .office-hours-toggle.open .toggle-knob { left: 18px; }
 
     .toggle-label {
         font-size: 0.75rem;
@@ -305,37 +369,62 @@
     .office-hours-toggle.closed .toggle-label { color: #f85149; }
 
     .pulse-dot {
-        width: 8px;
-        height: 8px;
+        width: 8px; height: 8px;
         background: currentColor;
         border-radius: 50%;
     }
 
-    .sync-active .pulse-dot {
-        animation: pulse 1.5s infinite;
-    }
+    .sync-active .pulse-dot { animation: pulse 1.5s infinite; }
 
+    /* Guest waiting overlay */
     .guest-waiting-overlay {
-        position: absolute;
-        top: 60px;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(13, 17, 23, 0.9);
+        position: fixed;
+        top: 60px; left: 0; right: 0; bottom: 0;
+        background: rgba(13, 17, 23, 0.95);
         backdrop-filter: blur(10px);
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         z-index: 50;
-        gap: 12px;
+        gap: 14px;
+        padding: 40px;
     }
 
-    .conn-error-icon .material-icons {
+    .overlay-icon {
         font-size: 3rem;
-        color: #f85149;
+        color: #58a6ff;
+        margin-bottom: 4px;
     }
 
+    .overlay-sub {
+        color: var(--text-dark-muted);
+        font-size: 0.95rem;
+        text-align: center;
+        max-width: 300px;
+    }
+
+    /* Feature #4: Guest name input */
+    .guest-name-input {
+        background: rgba(0,0,0,0.4);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 10px;
+        padding: 14px 20px;
+        color: white;
+        font-size: 1.1rem;
+        text-align: center;
+        width: 100%;
+        max-width: 280px;
+        transition: border-color 0.2s;
+        outline: none;
+    }
+
+    .guest-name-input:focus { border-color: #58a6ff; }
+
+    .connect-btn { min-width: 140px; margin-top: 4px; }
+    .connect-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .conn-error-icon .material-icons { font-size: 3rem; color: #f85149; }
     .conn-error-msg {
         color: #f85149;
         font-size: 0.95rem;
@@ -344,6 +433,7 @@
         line-height: 1.5;
     }
 
+    /* Timeline canvas */
     .timeline-canvas-wrapper {
         flex: 1;
         padding: 40px;
@@ -373,11 +463,10 @@
     }
 
     .marker-dot {
-        width: 14px;
-        height: 14px;
+        width: 14px; height: 14px;
         border-radius: 50%;
         background: var(--brand-accent);
-        box-shadow: 0 0 10px rgba(46, 160, 67, 0.5);
+        box-shadow: 0 0 10px rgba(46,160,67,0.5);
         z-index: 2;
         margin-top: 5px;
     }
@@ -387,15 +476,11 @@
         flex: 1;
         background: var(--border-dim);
         position: absolute;
-        top: 19px;
-        bottom: -35px;
-        left: 19px;
+        top: 19px; bottom: -35px; left: 19px;
         z-index: 1;
     }
 
-    .timeline-item:last-child .marker-line {
-        display: none;
-    }
+    .timeline-item:last-child .marker-line { display: none; }
 
     .timeline-content {
         flex: 1;
@@ -406,17 +491,84 @@
         box-shadow: 0 4px 20px rgba(0,0,0,0.2);
     }
 
+    /* Feature #1 + #6: Meta row */
     .timeline-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
         margin-bottom: 15px;
+        flex-wrap: wrap;
+    }
+
+    .time {
         color: var(--text-dark-muted);
         font-size: 0.85rem;
         font-weight: bold;
         letter-spacing: 1px;
     }
 
-    .card-editor {
-        min-height: 50px;
+    /* Feature #6 */
+    .time-editable {
+        cursor: pointer;
+        border-bottom: 1px dashed rgba(255,255,255,0.2);
+        padding-bottom: 1px;
+        transition: border-color 0.2s, color 0.2s;
     }
+    .time-editable:hover { color: #58a6ff; border-color: #58a6ff; }
+
+    .timestamp-input {
+        background: rgba(0,0,0,0.4);
+        border: 1px solid #58a6ff;
+        border-radius: 6px;
+        padding: 4px 10px;
+        color: #58a6ff;
+        font-size: 0.85rem;
+        outline: none;
+        font-family: monospace;
+    }
+
+    /* Feature #1: Entry delete */
+    .btn-delete-entry {
+        background: transparent;
+        border: none;
+        color: rgba(255,255,255,0.2);
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        transition: all 0.2s;
+        margin-left: auto;
+    }
+    .btn-delete-entry:hover { color: #f85149; background: rgba(248,81,73,0.1); }
+    .btn-delete-entry .material-icons { font-size: 1rem; color: inherit; }
+
+    .entry-delete-confirm {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+        animation: fadeIn 0.15s ease;
+    }
+
+    .confirm-text { font-size: 0.78rem; color: #f85149; font-weight: bold; }
+
+    .btn-confirm-yes {
+        background: #f85149; color: white; border: none;
+        padding: 3px 9px; border-radius: 5px; cursor: pointer;
+        font-size: 0.78rem; font-weight: bold;
+    }
+    .btn-confirm-yes:hover { background: #da3633; }
+
+    .btn-confirm-no {
+        background: rgba(255,255,255,0.05); color: var(--text-dark-muted);
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 3px 9px; border-radius: 5px; cursor: pointer; font-size: 0.78rem;
+    }
+    .btn-confirm-no:hover { background: rgba(255,255,255,0.1); color: var(--text-white); }
+
+    /* Editor */
+    .card-editor { min-height: 50px; }
 
     .apple-notes-editor {
         width: 100%;
@@ -439,13 +591,14 @@
         margin: 15px 0;
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
-    
+
     .apple-notes-editor h1, .apple-notes-editor h2, .apple-notes-editor h3 {
         color: var(--text-white);
         margin-top: 1em;
         margin-bottom: 0.5em;
     }
 
+    /* Empty state */
     .empty-state {
         text-align: center;
         margin-top: 100px;
@@ -454,20 +607,15 @@
 
     .btn-primary {
         background: var(--brand-accent);
-        color: white;
-        border: none;
+        color: white; border: none;
         padding: 12px 24px;
         border-radius: 8px;
-        font-weight: bold;
-        cursor: pointer;
+        font-weight: bold; cursor: pointer;
         margin-top: 20px;
         transition: all 0.2s;
     }
-    
-    .btn-primary:hover {
-        background: #3fb950;
-        box-shadow: 0 0 15px rgba(46, 160, 67, 0.4);
-    }
+
+    .btn-primary:hover { background: #3fb950; box-shadow: 0 0 15px rgba(46,160,67,0.4); }
 
     .btn-add-entry {
         background: transparent;
@@ -488,9 +636,9 @@
     .btn-add-entry:hover {
         color: var(--text-white);
         border-color: var(--brand-accent);
-        background: rgba(46, 160, 67, 0.1);
+        background: rgba(46,160,67,0.1);
     }
-    
+
     .marker-dot.pulse {
         background: transparent;
         border: 2px solid var(--text-dark-muted);
