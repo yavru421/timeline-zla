@@ -7,10 +7,11 @@ window.webrtcSync = {
         this.dotNetRef = dotNetReference;
         
         // Use deterministic session code if provided
+        const config = { debug: 3 };
         if (customId) {
-            this.peer = new Peer(customId);
+            this.peer = new Peer(customId, config);
         } else {
-            this.peer = new Peer();
+            this.peer = new Peer(config);
         }
         
         this.peer.on('open', (id) => {
