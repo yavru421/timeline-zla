@@ -52,13 +52,27 @@
                 <div class="job-list">
                     @foreach (var job in savedJobs.OrderByDescending(j => j.LastModified))
                     {
-                        <div class="job-item" @onclick="() => ResumeJob(job.JobId)">
-                            <div class="job-info">
+                        <div class="job-item">
+                            <div class="job-info" @onclick="() => ResumeJob(job.JobId)">
                                 <span class="job-name">@job.JobName</span>
                                 <span class="job-code">@job.JobId</span>
                             </div>
                             <div class="job-meta">
-                                <span class="material-icons">arrow_forward_ios</span>
+                                @if (deleteConfirmId == job.JobId)
+                                {
+                                    <div class="delete-confirm" @onclick:stopPropagation="true">
+                                        <span class="confirm-text">Delete?</span>
+                                        <button class="btn-confirm-yes" @onclick="() => ConfirmDelete(job.JobId)">Yes</button>
+                                        <button class="btn-confirm-no" @onclick="CancelDelete">No</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button class="btn-delete-job" title="Delete Job" @onclick:stopPropagation="true" @onclick="() => RequestDelete(job.JobId)">
+                                        <span class="material-icons">delete_outline</span>
+                                    </button>
+                                    <span class="material-icons nav-arrow" @onclick="() => ResumeJob(job.JobId)">arrow_forward_ios</span>
+                                }
                             </div>
                         </div>
                     }
@@ -278,16 +292,82 @@
         letter-spacing: 1px;
     }
 
+    .job-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
     .job-meta .material-icons {
         color: var(--text-dark-muted);
         font-size: 1.2rem;
     }
+
+    .nav-arrow {
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+    .nav-arrow:hover { color: var(--text-white); }
+
+    .btn-delete-job {
+        background: transparent;
+        border: none;
+        color: var(--text-dark-muted);
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        transition: all 0.2s;
+    }
+    .btn-delete-job:hover {
+        color: #f85149;
+        background: rgba(248, 81, 73, 0.1);
+    }
+    .btn-delete-job .material-icons { font-size: 1.2rem; color: inherit; }
+
+    .delete-confirm {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        animation: fadeIn 0.15s ease;
+    }
+    .confirm-text {
+        font-size: 0.8rem;
+        color: #f85149;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+    }
+    .btn-confirm-yes {
+        background: #f85149;
+        color: white;
+        border: none;
+        padding: 4px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: bold;
+        transition: background 0.2s;
+    }
+    .btn-confirm-yes:hover { background: #da3633; }
+    .btn-confirm-no {
+        background: rgba(255,255,255,0.05);
+        color: var(--text-dark-muted);
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 4px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        transition: all 0.2s;
+    }
+    .btn-confirm-no:hover { background: rgba(255,255,255,0.1); color: var(--text-white); }
 </style>
 
 @code {
     private string newJobName = string.Empty;
     private string joinCode = string.Empty;
     private List<Job> savedJobs = new();
+    private string? deleteConfirmId = null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -318,5 +398,22 @@
     private void ResumeJob(string jobId)
     {
         Navigation.NavigateTo($"/job/{jobId}");
+    }
+
+    private void RequestDelete(string jobId)
+    {
+        deleteConfirmId = jobId;
+    }
+
+    private void CancelDelete()
+    {
+        deleteConfirmId = null;
+    }
+
+    private async Task ConfirmDelete(string jobId)
+    {
+        await Storage.DeleteJobAsync(jobId);
+        savedJobs.RemoveAll(j => j.JobId == jobId);
+        deleteConfirmId = null;
     }
 }
