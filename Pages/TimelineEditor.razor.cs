@@ -25,6 +25,7 @@ namespace TimelineZLA.Pages
         private Job currentJob = new();
         private DotNetObjectReference<TimelineEditor>? dotNetRef;
         private int lastRenderedEntryCount = 0;
+        private string? pendingHostConnect = null; // Guest: connect after PeerJS open fires
 
         protected override void OnInitialized()
         {
@@ -35,6 +36,7 @@ namespace TimelineZLA.Pages
 
             Sync.OnDataReceived += OnSyncDataReceived;
             Sync.OnConnected += OnPeerConnected;
+            Sync.OnPeerIdGenerated += OnGuestPeerReady;
             dotNetRef = DotNetObjectReference.Create(this);
         }
 
@@ -61,9 +63,12 @@ namespace TimelineZLA.Pages
                 }
                 else
                 {
-                    // Guest Mode: Initialize PeerJS with random ID, then connect to Host's JobCode
+                    // Guest Mode: Initialize PeerJS with random ID.
+                    // Do NOT call ConnectToPeer here — PeerJS isn't on the network yet.
+                    // OnGuestPeerReady fires when the 'open' event confirms we have a peer ID,
+                    // then we connect to the host.
+                    pendingHostConnect = JobCode;
                     await Sync.InitializeAsync();
-                    await Sync.ConnectToPeerAsync(JobCode);
                 }
             }
 
@@ -169,6 +174,18 @@ namespace TimelineZLA.Pages
             }
         }
 
+        // Fires when the guest's PeerJS 'open' event confirms we're registered on the signaling server.
+        // Only NOW is it safe to reach out and connect to the host peer.
+        private async void OnGuestPeerReady(string myPeerId)
+        {
+            if (!IsHost && pendingHostConnect != null)
+            {
+                var targetCode = pendingHostConnect;
+                pendingHostConnect = null;
+                await Sync.ConnectToPeerAsync(targetCode);
+            }
+        }
+
         private async void OnSyncDataReceived(string peerId, string dataStr)
         {
             if (IsHost) return; // Host only sends for now
@@ -237,6 +254,7 @@ namespace TimelineZLA.Pages
         {
             Sync.OnDataReceived -= OnSyncDataReceived;
             Sync.OnConnected -= OnPeerConnected;
+            Sync.OnPeerIdGenerated -= OnGuestPeerReady;
             dotNetRef?.Dispose();
         }
     }
