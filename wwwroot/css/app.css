@@ -1,12 +1,42 @@
 :root {
     --bg-darker: #0d1117;
     --bg-panel: #161b22;
+    --bg-card: rgba(255,255,255,0.03);
+    --bg-main: #0d1117;
     --border-dim: #30363d;
     --brand-accent: #238636;
     --brand-accent-hover: #2ea043;
     --text-white: #c9d1d9;
     --text-dark-muted: #8b949e;
     --glass-bg: rgba(22, 27, 34, 0.7);
+}
+
+/* ── Light theme ─────────────────────────────────────────────────────── */
+[data-theme="light"] {
+    --bg-darker: #f6f8fa;
+    --bg-panel: #ffffff;
+    --bg-card: rgba(0,0,0,0.03);
+    --bg-main: #f6f8fa;
+    --border-dim: #d0d7de;
+    --brand-accent: #1a7f37;
+    --brand-accent-hover: #218a3e;
+    --text-white: #1f2328;
+    --text-dark-muted: #57606a;
+    --glass-bg: rgba(255,255,255,0.8);
+}
+
+/* ── High-contrast theme ─────────────────────────────────────────────── */
+[data-theme="hc"] {
+    --bg-darker: #000000;
+    --bg-panel: #111111;
+    --bg-card: #1a1a1a;
+    --bg-main: #000000;
+    --border-dim: #ffffff;
+    --brand-accent: #ffff00;
+    --brand-accent-hover: #ffff33;
+    --text-white: #ffffff;
+    --text-dark-muted: #ffff00;
+    --glass-bg: rgba(0,0,0,0.9);
 }
 
 body, html {

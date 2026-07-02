@@ -56,7 +56,54 @@ namespace TimelineZLA.Pages
         private bool showFilesPanel = false;
         private bool isProcessingFiles = false;
         private string fileStatus = string.Empty;
-        private string? savedEntryId = null; // brief "Saved" flash per entry
+        private string? savedEntryId = null;
+
+        // --- Feature #1: Entry Tags ---
+        private string? tagInputEntryId = null;
+        private string newTagValue = string.Empty;
+
+        // --- Feature #2: Search / Filter ---
+        private string searchQuery = string.Empty;
+        private string typeFilter = string.Empty;
+        private bool showSearchBar = false;
+
+        // --- Feature #3: Pin ---
+        // IsPinned lives on TimelineEntry model
+
+        // --- Feature #4: Entry type ---
+        // EntryType lives on TimelineEntry model
+
+        // --- Feature #5: Job summary ---
+        private bool showSummaryPanel = false;
+
+        // --- Feature #7: Theme ---
+        private string currentTheme = "dark";
+        private string ThemeIcon => currentTheme switch { "light" => "light_mode", "hc" => "contrast", _ => "dark_mode" };
+
+        // --- Feature #8: Duration timer ---
+        private Timer? _durationTimer;
+
+        // Computed filtered + sorted entry list
+        private IEnumerable<TimelineEntry> FilteredEntries
+        {
+            get
+            {
+                var entries = currentJob.Entries.AsEnumerable();
+                if (!string.IsNullOrWhiteSpace(searchQuery))
+                    entries = entries.Where(e =>
+                        StripHtml(e.ContentHtml).Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                        e.Tags.Any(t => t.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)));
+                if (!string.IsNullOrWhiteSpace(typeFilter))
+                    entries = entries.Where(e => e.EntryType == typeFilter);
+                return entries.OrderByDescending(e => e.IsPinned).ThenByDescending(e => e.Timestamp);
+            }
+        }
+
+        private static string StripHtml(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return string.Empty;
+            return System.Text.RegularExpressions.Regex.Replace(html, "<.*?>", " ");
+        }
 
         protected override void OnInitialized()
         {
@@ -86,16 +133,22 @@ namespace TimelineZLA.Pages
 
                     lobbyIsOpen = true;
                     await Sync.InitializeAsync(JobCode);
-
                     hasReceivedInitialData = true;
 
-                    // Start heartbeat timer — refreshes "Saved X ago" display every 15s
+                    // Heartbeat timer — refreshes "Saved X ago" every 15s
                     _heartbeatTimer = new Timer(_ => InvokeAsync(StateHasChanged), null,
                         TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
 
+                    // Feature #8: Duration timer — updates "Xh Ym on site" every 60s
+                    _durationTimer = new Timer(_ => InvokeAsync(StateHasChanged), null,
+                        TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+
+                    // Feature #7: Load saved theme
+                    currentTheme = await JSRuntime.InvokeAsync<string>("zlaInterop.getTheme");
+
                     StateHasChanged();
                 }
-                // Guest: do nothing here — wait for user to enter name and click Connect
+                // Guest: wait for name input
             }
 
             // Initialize any new editor blocks
@@ -246,6 +299,139 @@ namespace TimelineZLA.Pages
         }
 
         private async void HandleBlur(string entryId) => await Task.CompletedTask;
+
+        // ─── Feature #1: Entry Tags ───────────────────────────────────────────────
+        private void StartTagInput(string entryId)
+        {
+            tagInputEntryId = entryId;
+            newTagValue = string.Empty;
+        }
+
+        private async Task AddTag(string entryId)
+        {
+            var tag = newTagValue.Trim().ToLower();
+            if (string.IsNullOrEmpty(tag)) { tagInputEntryId = null; return; }
+            var entry = currentJob.Entries.FirstOrDefault(e => e.Id == entryId);
+            if (entry != null && !entry.Tags.Contains(tag))
+            {
+                entry.Tags.Add(tag);
+                await SaveAndBroadcast();
+            }
+            tagInputEntryId = null;
+            newTagValue = string.Empty;
+        }
+
+        private async Task RemoveTag(string entryId, string tag)
+        {
+            var entry = currentJob.Entries.FirstOrDefault(e => e.Id == entryId);
+            if (entry != null)
+            {
+                entry.Tags.Remove(tag);
+                await SaveAndBroadcast();
+            }
+        }
+
+        private async Task HandleTagKeydown(KeyboardEventArgs e, string entryId)
+        {
+            if (e.Key == "Enter") await AddTag(entryId);
+            if (e.Key == "Escape") { tagInputEntryId = null; newTagValue = string.Empty; }
+        }
+
+        // ─── Feature #3: Pin/Star ─────────────────────────────────────────────────
+        private async Task TogglePin(string entryId)
+        {
+            var entry = currentJob.Entries.FirstOrDefault(e => e.Id == entryId);
+            if (entry == null) return;
+            entry.IsPinned = !entry.IsPinned;
+            await SaveAndBroadcast();
+        }
+
+        // ─── Feature #4: Entry type ───────────────────────────────────────────────
+        private async Task SetEntryType(string entryId, string type)
+        {
+            var entry = currentJob.Entries.FirstOrDefault(e => e.Id == entryId);
+            if (entry == null) return;
+            entry.EntryType = type;
+            await SaveAndBroadcast();
+        }
+
+        // ─── Feature #2: Search ───────────────────────────────────────────────────
+        private void ToggleSearchBar() { showSearchBar = !showSearchBar; if (!showSearchBar) { searchQuery = string.Empty; typeFilter = string.Empty; } }
+        private void ClearSearch() { searchQuery = string.Empty; typeFilter = string.Empty; }
+        private void SetTypeFilter(string type) { typeFilter = typeFilter == type ? string.Empty : type; }
+
+        // ─── Feature #5: Job summary ──────────────────────────────────────────────
+        private void ToggleSummaryPanel() => showSummaryPanel = !showSummaryPanel;
+
+        private string FormatDuration()
+        {
+            var start = currentJob.Entries.Any()
+                ? currentJob.Entries.Min(e => e.Timestamp)
+                : currentJob.CreatedAt;
+            var elapsed = DateTime.UtcNow - start;
+            if (elapsed.TotalMinutes < 1) return "< 1m";
+            if (elapsed.TotalHours < 1) return $"{(int)elapsed.TotalMinutes}m";
+            return $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m";
+        }
+
+        private Dictionary<string, int> GetEntryTypeCounts() =>
+            currentJob.Entries.GroupBy(e => e.EntryType)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+        private static string GetTypeEmoji(string type) => type switch
+        {
+            "photo"     => "📸",
+            "alert"     => "⚠️",
+            "milestone" => "🏁",
+            "check"     => "✅",
+            _           => "📝"
+        };
+
+        private static string GetTypeLabel(string type) => type switch
+        {
+            "photo"     => "Photos",
+            "alert"     => "Alerts",
+            "milestone" => "Milestones",
+            "check"     => "Checks",
+            _           => "Notes"
+        };
+
+        // ─── Feature #7: Theme cycle ───────────────────────────────────────────────
+        private async Task CycleTheme()
+        {
+            currentTheme = currentTheme switch { "dark" => "light", "light" => "hc", _ => "dark" };
+            await JSRuntime.InvokeVoidAsync("zlaInterop.setTheme", currentTheme);
+            StateHasChanged();
+        }
+
+        // ─── Tag chip colors ──────────────────────────────────────────────────────
+        private static string GetTagTextColor(string tag)
+        {
+            var c = new[] { "#2ea043", "#58a6ff", "#f78166", "#d29922", "#a371f7", "#8b949e" };
+            return c[Math.Abs(tag.GetHashCode()) % c.Length];
+        }
+        private static string GetTagBgColor(string tag)
+        {
+            var c = new[] {
+                "rgba(46,160,67,0.15)", "rgba(88,166,255,0.15)", "rgba(247,129,102,0.15)",
+                "rgba(210,153,34,0.15)", "rgba(163,113,247,0.15)", "rgba(139,148,158,0.15)"
+            };
+            return c[Math.Abs(tag.GetHashCode()) % c.Length];
+        }
+
+        // ─── Shared save+broadcast helper ─────────────────────────────────────────
+        private async Task SaveAndBroadcast()
+        {
+            currentJob.LastModified = DateTime.UtcNow;
+            lastSavedAt = DateTime.Now;
+            await Storage.SaveJobAsync(currentJob);
+            if (lobbyIsOpen)
+            {
+                var payload = new { type = "timeline_update", entries = currentJob.Entries };
+                await Sync.BroadcastDataAsync(JsonSerializer.Serialize(payload));
+            }
+            StateHasChanged();
+        }
 
         // ─── P2P callbacks ────────────────────────────────────────────────────────
         private async void OnPeerConnected(string peerId)
@@ -566,6 +752,7 @@ namespace TimelineZLA.Pages
         public void Dispose()
         {
             _heartbeatTimer?.Dispose();
+            _durationTimer?.Dispose();
             Sync.OnDataReceived -= OnSyncDataReceived;
             Sync.OnConnected -= OnPeerConnected;
             Sync.OnDisconnected -= OnPeerDisconnected;

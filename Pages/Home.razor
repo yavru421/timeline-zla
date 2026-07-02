@@ -4,8 +4,42 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject TimelineStorageService Storage
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@implements IDisposable
 
 <PageTitle>TimelineZLA - Lobby</PageTitle>
+
+@* ── Theme toggle (top-right corner) *@
+<button class="theme-fab" @onclick="CycleTheme" title="Switch theme: Dark → Light → High-Contrast">
+    <span class="material-icons">@ThemeIcon</span>
+</button>
+
+@* ── PWA install toast *@
+@if (showInstallToast && !installDismissed)
+{
+    <div class="install-toast">
+        @if (isIosInstall)
+        {
+            <span class="material-icons toast-icon">ios_share</span>
+            <div class="toast-text">
+                <strong>Install TimelineZLA</strong>
+                <span>Tap <strong>Share</strong> then <strong>Add to Home Screen</strong></span>
+            </div>
+        }
+        else
+        {
+            <span class="material-icons toast-icon">install_mobile</span>
+            <div class="toast-text">
+                <strong>Install TimelineZLA</strong>
+                <span>Add to Home Screen for offline access</span>
+            </div>
+            <button class="toast-install-btn" @onclick="TriggerInstall">Install</button>
+        }
+        <button class="toast-dismiss" @onclick="DismissInstall">
+            <span class="material-icons">close</span>
+        </button>
+    </div>
+}
 
 <div class="lobby-container">
     <div class="lobby-card glass-panel">
@@ -433,6 +467,78 @@
         transition: all 0.2s;
     }
     .btn-confirm-no:hover { background: rgba(255,255,255,0.1); color: var(--text-white); }
+
+    /* Theme toggle FAB */
+    .theme-fab {
+        position: fixed;
+        top: 14px;
+        right: 14px;
+        z-index: 900;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid var(--border-dim);
+        color: var(--text-dark-muted);
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .theme-fab:hover { color: var(--text-white); background: rgba(255,255,255,0.12); }
+    .theme-fab .material-icons { font-size: 1.1rem; color: inherit; }
+
+    /* PWA install toast */
+    .install-toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9000;
+        background: var(--bg-panel);
+        border: 1px solid rgba(88,166,255,0.35);
+        border-radius: 14px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        min-width: 300px;
+        max-width: 90vw;
+        animation: slideUp 0.3s ease;
+    }
+    @keyframes slideUp {
+        from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+        to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+    }
+    .toast-icon { color: #58a6ff; font-size: 1.6rem; flex-shrink: 0; }
+    .toast-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .toast-text strong { color: var(--text-white); font-size: 0.9rem; }
+    .toast-text span { color: var(--text-dark-muted); font-size: 0.8rem; }
+    .toast-install-btn {
+        background: #58a6ff;
+        color: #0d1117;
+        border: none;
+        padding: 7px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 0.85rem;
+        white-space: nowrap;
+        transition: background 0.2s;
+    }
+    .toast-install-btn:hover { background: #79b8ff; }
+    .toast-dismiss {
+        background: transparent;
+        border: none;
+        color: var(--text-dark-muted);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        padding: 2px;
+    }
+    .toast-dismiss .material-icons { font-size: 1rem; color: inherit; }
 </style>
 
 @code {
@@ -440,10 +546,20 @@
     private string joinCode = string.Empty;
     private List<Job> savedJobs = new();
     private string? deleteConfirmId = null;
+    private DotNetObjectReference<Home>? _dotNetRef;
 
     // Feature #2: Inline job rename
     private string? editingJobId = null;
     private string editingJobName = string.Empty;
+
+    // Feature #6: PWA Install
+    private bool showInstallToast = false;
+    private bool installDismissed = false;
+    private bool isIosInstall = false;
+
+    // Feature #7: Theme
+    private string currentTheme = "dark";
+    private string ThemeIcon => currentTheme switch { "light" => "light_mode", "hc" => "contrast", _ => "dark_mode" };
 
     protected override async Task OnInitializedAsync()
     {
@@ -521,4 +637,62 @@
         if (elapsed.TotalDays < 7) return $"{(int)elapsed.TotalDays}d ago";
         return utc.ToLocalTime().ToString("MMM dd");
     }
+
+    // Feature #7: Theme
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            currentTheme = await JSRuntime.InvokeAsync<string>("zlaInterop.getTheme");
+            StateHasChanged();
+
+            // Register PWA callback
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("zlaInterop.registerPwaCallback", _dotNetRef);
+
+            // Check iOS install guide
+            isIosInstall = await JSRuntime.InvokeAsync<bool>("zlaInterop.showIosInstallGuide");
+            if (isIosInstall)
+            {
+                // Only show iOS guide if not previously dismissed
+                var dismissed = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "zla-pwa-dismissed");
+                showInstallToast = dismissed != "1";
+                StateHasChanged();
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void OnInstallAvailable()
+    {
+        var dismissed = JSRuntime.InvokeAsync<string?>("localStorage.getItem", "zla-pwa-dismissed").Result;
+        if (dismissed != "1")
+        {
+            showInstallToast = true;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CycleTheme()
+    {
+        currentTheme = currentTheme switch { "dark" => "light", "light" => "hc", _ => "dark" };
+        await JSRuntime.InvokeVoidAsync("zlaInterop.setTheme", currentTheme);
+        StateHasChanged();
+    }
+
+    private async Task TriggerInstall()
+    {
+        var accepted = await JSRuntime.InvokeAsync<bool>("zlaInterop.triggerInstallPrompt");
+        showInstallToast = false;
+        if (accepted) await JSRuntime.InvokeVoidAsync("localStorage.setItem", "zla-pwa-dismissed", "1");
+    }
+
+    private async Task DismissInstall()
+    {
+        installDismissed = true;
+        showInstallToast = false;
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "zla-pwa-dismissed", "1");
+    }
+
+    public void Dispose() => _dotNetRef?.Dispose();
 }

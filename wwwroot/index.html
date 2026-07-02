@@ -24,6 +24,24 @@
     
 
     <script type="importmap"></script>
+
+    <script>
+        // Apply saved theme before Blazor loads (prevents flash)
+        (function() {
+            var t = localStorage.getItem('zla-theme') || 'dark';
+            if (t !== 'dark') document.documentElement.setAttribute('data-theme', t);
+        })();
+
+        // Capture PWA install prompt
+        window._pwaPrompt = null;
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            window._pwaPrompt = e;
+            if (window.dotNetPwaRef) {
+                window.dotNetPwaRef.invokeMethodAsync('OnInstallAvailable');
+            }
+        });
+    </script>
 </head>
 <body>
     <div id="app">

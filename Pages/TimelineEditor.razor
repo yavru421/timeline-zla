@@ -41,7 +41,7 @@
         </div>
 
         <div class="header-right">
-            @* Feature #4: Show connected guest chips for host *@
+            @* Guest chips *@
             @if (IsHost && connectedGuests.Any())
             {
                 <div class="guest-chips">
@@ -51,16 +51,66 @@
                     }
                 </div>
             }
+
+            @* Feature #8: Duration timer *@
+            @if (currentJob.Entries.Any())
+            {
+                <div class="duration-badge" title="Time since first entry">
+                    <span class="material-icons" style="font-size:0.9rem;">timer</span>
+                    @FormatDuration()
+                </div>
+            }
+
+            @* Feature #2: Search toggle *@
+            <button class="icon-btn @(showSearchBar ? "active-btn" : "")" @onclick="ToggleSearchBar" title="Search entries">
+                <span class="material-icons">search</span>
+            </button>
+
+            @* Feature #7: Theme toggle *@
+            <button class="icon-btn" @onclick="CycleTheme" title="Toggle theme">
+                <span class="material-icons">@ThemeIcon</span>
+            </button>
+
             <button class="icon-btn tooltip-btn" @onclick="ExportPdf" title="Export Timeline to PDF">
                 <span class="material-icons">picture_as_pdf</span>
             </button>
             <div class="sync-status @(isSyncing ? "sync-active" : "")">
                 <span class="pulse-dot"></span>
-                @* Feature #3: Saved heartbeat *@
                 <span>@(isSyncing ? "Syncing..." : FormatSavedTime())</span>
             </div>
         </div>
     </div>
+
+    @* Feature #2: Search bar (collapsible) *@
+    @if (showSearchBar)
+    {
+        <div class="search-panel">
+            <div class="search-input-row">
+                <span class="material-icons search-icon">search</span>
+                <input class="search-input"
+                       type="text"
+                       placeholder="Search entries, tags..."
+                       @bind="searchQuery"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(searchQuery) || !string.IsNullOrEmpty(typeFilter))
+                {
+                    <span class="search-count">@FilteredEntries.Count() results</span>
+                    <button class="search-clear" @onclick="ClearSearch" title="Clear">
+                        <span class="material-icons">close</span>
+                    </button>
+                }
+            </div>
+            <div class="type-filter-row">
+                @foreach (var t in new[] { "note", "photo", "alert", "milestone", "check" })
+                {
+                    <button class="type-filter-chip @(typeFilter == t ? "active" : "") type-@t"
+                            @onclick="() => SetTypeFilter(t)">
+                        @GetTypeEmoji(t) @GetTypeLabel(t)
+                    </button>
+                }
+            </div>
+        </div>
+    }
 
     @* Guest waiting overlay — name prompt → spinner → error *@
     @if (!IsHost && !hasReceivedInitialData)
@@ -196,6 +246,64 @@
     </div>
 
     <div class="timeline-canvas-wrapper" id="timeline-export-root">
+
+        @* Feature #5: Job Summary Panel *@
+        @if (currentJob.Entries.Any())
+        {
+            <div class="summary-panel @(showSummaryPanel ? "panel-open" : "")">
+                <div class="summary-header" @onclick="ToggleSummaryPanel">
+                    <div class="summary-title">
+                        <span class="material-icons">insert_chart</span>
+                        <span>@currentJob.Entries.Count @(currentJob.Entries.Count == 1 ? "entry" : "entries")</span>
+                        <span class="summary-sep">•</span>
+                        <span>@FormatDuration() on site</span>
+                        @if (!string.IsNullOrEmpty(typeFilter))
+                        {
+                            <span class="summary-filter-badge">@typeFilter</span>
+                        }
+                    </div>
+                    <span class="material-icons chevron">@(showSummaryPanel ? "expand_less" : "expand_more")</span>
+                </div>
+                @if (showSummaryPanel)
+                {
+                    <div class="summary-body">
+                        <div class="type-summary-chips">
+                            @foreach (var kvp in GetEntryTypeCounts())
+                            {
+                                <button class="type-summary-chip type-@kvp.Key @(typeFilter == kvp.Key ? "active" : "")"
+                                        @onclick="() => SetTypeFilter(kvp.Key)">
+                                    @GetTypeEmoji(kvp.Key) <strong>@kvp.Value</strong> @GetTypeLabel(kvp.Key)
+                                </button>
+                            }
+                        </div>
+                        @{
+                            var sEntries = currentJob.Entries.OrderBy(e => e.Timestamp).ToList();
+                            if (sEntries.Count > 1)
+                            {
+                                var minT = sEntries.First().Timestamp;
+                                var maxT = sEntries.Last().Timestamp;
+                                var totalSpan = (maxT - minT).TotalSeconds;
+                                const int BUCKETS = 16;
+                                var bucketCounts = Enumerable.Range(0, BUCKETS)
+                                    .Select(b => sEntries.Count(e => {
+                                        var off = totalSpan > 0 ? (e.Timestamp - minT).TotalSeconds / totalSpan : 0;
+                                        return (int)(off * (BUCKETS - 1)) == b;
+                                    })).ToList();
+                                var maxCount = Math.Max(1, bucketCounts.Max());
+                                <div class="sparkline">
+                                    @foreach (var cnt in bucketCounts)
+                                    {
+                                        var pct = cnt * 100 / maxCount;
+                                        <div class="spark-bar" style="height:@(pct)%" title="@cnt entries"></div>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        }
+
         @if (currentJob.Entries.Count == 0)
         {
             <div class="empty-state">
@@ -209,15 +317,26 @@
         }
         else
         {
+            @{
+                var filteredList = FilteredEntries.ToList();
+                bool dividerShown = false;
+            }
             <div class="vertical-timeline">
-                @foreach (var entry in currentJob.Entries.OrderByDescending(e => e.Timestamp))
+                @foreach (var entry in filteredList)
                 {
-                    <div class="timeline-item" @key="entry.Id">
+                    @* Pin divider *@
+                    @if (!dividerShown && !entry.IsPinned && filteredList.Any(e => e.IsPinned))
+                    {
+                        dividerShown = true;
+                        <div class="pin-divider"><span>— Timeline —</span></div>
+                    }
+
+                    <div class="timeline-item entry-type-@entry.EntryType @(entry.IsPinned ? "pinned-entry" : "")" @key="entry.Id">
                         <div class="timeline-marker">
-                            <div class="marker-dot"></div>
+                            <div class="marker-dot type-dot-@entry.EntryType @(entry.IsPinned ? "pinned-dot" : "")"></div>
                             <div class="marker-line"></div>
                         </div>
-                        <div class="timeline-content">
+                        <div class="timeline-content entry-border-@entry.EntryType">
                             <div class="timeline-meta">
                                 @* Feature #6: Tap timestamp to edit *@
                                 @if (IsHost && editingTimestampId == entry.Id)
@@ -248,6 +367,15 @@
                                     </button>
                                 }
 
+                                @* Pin button *@
+                                @if (IsHost)
+                                {
+                                    <button class="btn-pin @(entry.IsPinned ? "pinned" : "")"
+                                            @onclick="() => TogglePin(entry.Id)">
+                                        <span class="material-icons">push_pin</span>
+                                    </button>
+                                }
+
                                 @* Feature #1: Delete individual entry *@
                                 @if (IsHost)
                                 {
@@ -269,6 +397,60 @@
                                     }
                                 }
                             </div>
+
+                            @* Entry type selector *@
+                            @if (IsHost)
+                            {
+                                <div class="type-selector">
+                                    @foreach (var t in new[] { "note", "photo", "alert", "milestone", "check" })
+                                    {
+                                        <button class="type-btn @(entry.EntryType == t ? "active" : "") type-@t"
+                                                @onclick="() => SetEntryType(entry.Id, t)"
+                                                title="@GetTypeLabel(t)">
+                                            @GetTypeEmoji(t)
+                                        </button>
+                                    }
+                                </div>
+                            }
+
+                            @* Tag chips *@
+                            <div class="tag-row">
+                                @foreach (var tag in entry.Tags)
+                                {
+                                    <span class="tag-chip"
+                                          style="color:@GetTagTextColor(tag);background:@GetTagBgColor(tag);">
+                                        @tag
+                                        @if (IsHost)
+                                        {
+                                            <button class="tag-remove" @onclick="() => RemoveTag(entry.Id, tag)"
+                                                    @onclick:stopPropagation="true">
+                                                <span class="material-icons">close</span>
+                                            </button>
+                                        }
+                                    </span>
+                                }
+                                @if (IsHost)
+                                {
+                                    @if (tagInputEntryId == entry.Id)
+                                    {
+                                        <input class="tag-input"
+                                               type="text"
+                                               placeholder="tag..."
+                                               maxlength="20"
+                                               @bind="newTagValue"
+                                               @bind:event="oninput"
+                                               @onkeydown="e => HandleTagKeydown(e, entry.Id)"
+                                               @onblur="() => AddTag(entry.Id)" />
+                                    }
+                                    else
+                                    {
+                                        <button class="tag-add-btn" @onclick="() => StartTagInput(entry.Id)" title="Add tag">
+                                            <span class="material-icons">add</span>
+                                        </button>
+                                    }
+                                }
+                            </div>
+
                             <div class="card-editor">
                                 <div id="zla-editor-@entry.Id"
                                      class="apple-notes-editor @(IsHost ? "editable" : "readonly")"
@@ -948,5 +1130,188 @@
         display: flex;
         gap: 8px;
         margin-top: 8px;
+    }
+
+    /* ── Feature #2: Search panel ──────────────────────────────────────────── */
+    .search-panel {
+        background: rgba(0,0,0,0.3);
+        border-bottom: 1px solid var(--border-dim);
+        padding: 10px 20px;
+        animation: fadeIn 0.15s ease;
+    }
+    .search-input-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-dim);
+        border-radius: 8px;
+        padding: 6px 12px;
+    }
+    .search-icon { color: var(--text-dark-muted); font-size: 1.1rem; }
+    .search-input {
+        flex: 1;
+        background: none;
+        border: none;
+        outline: none;
+        color: var(--text-white);
+        font-size: 0.95rem;
+    }
+    .search-count { color: var(--text-dark-muted); font-size: 0.8rem; white-space: nowrap; }
+    .search-clear { background: none; border: none; color: var(--text-dark-muted); cursor: pointer; display: flex; align-items: center; }
+    .search-clear .material-icons { font-size: 1rem; color: inherit; }
+    .search-clear:hover { color: var(--text-white); }
+    .type-filter-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .type-filter-chip {
+        display: flex; align-items: center; gap: 4px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-dim);
+        color: var(--text-dark-muted);
+        padding: 4px 12px; border-radius: 20px;
+        cursor: pointer; font-size: 0.8rem; transition: all 0.2s;
+    }
+    .type-filter-chip:hover { color: var(--text-white); border-color: rgba(255,255,255,0.2); }
+    .type-filter-chip.active { color: var(--text-white); background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); }
+    .active-btn { color: var(--text-white) !important; background: rgba(255,255,255,0.1) !important; }
+
+    /* ── Feature #4: Entry type borders + marker dots ──────────────────────── */
+    .entry-border-alert    { border-left: 3px solid #f85149 !important; }
+    .entry-border-photo    { border-left: 3px solid #58a6ff !important; }
+    .entry-border-milestone{ border-left: 3px solid #d29922 !important; }
+    .entry-border-check    { border-left: 3px solid #2ea043 !important; }
+
+    .type-dot-alert     { background: #f85149 !important; box-shadow: 0 0 8px rgba(248,81,73,0.5) !important; }
+    .type-dot-photo     { background: #58a6ff !important; box-shadow: 0 0 8px rgba(88,166,255,0.5) !important; }
+    .type-dot-milestone { background: #d29922 !important; box-shadow: 0 0 8px rgba(210,153,34,0.5) !important; }
+    .type-dot-check     { background: #2ea043 !important; box-shadow: 0 0 8px rgba(46,160,67,0.5) !important; }
+
+    /* Type selector row */
+    .type-selector {
+        display: flex; gap: 4px;
+        padding: 6px 0 2px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        margin-bottom: 8px;
+    }
+    .type-btn {
+        background: none; border: 1px solid transparent;
+        padding: 3px 8px; border-radius: 6px;
+        cursor: pointer; font-size: 1rem;
+        opacity: 0.35; transition: all 0.15s;
+    }
+    .type-btn:hover { opacity: 0.75; background: rgba(255,255,255,0.05); }
+    .type-btn.active { opacity: 1; border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); }
+
+    /* ── Feature #1: Tag chips ──────────────────────────────────────────────── */
+    .tag-row {
+        display: flex; flex-wrap: wrap;
+        gap: 6px; padding: 6px 0 8px;
+        align-items: center; min-height: 28px;
+    }
+    .tag-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 2px 8px; border-radius: 20px;
+        font-size: 0.75rem; font-weight: bold;
+        border: 1px solid transparent;
+        user-select: none;
+    }
+    .tag-remove {
+        background: none; border: none; cursor: pointer;
+        display: flex; align-items: center; padding: 0;
+        opacity: 0.6; color: inherit;
+    }
+    .tag-remove:hover { opacity: 1; }
+    .tag-remove .material-icons { font-size: 0.75rem; color: inherit; }
+    .tag-add-btn {
+        background: none; border: 1px dashed rgba(255,255,255,0.15);
+        color: var(--text-dark-muted); width: 22px; height: 22px;
+        border-radius: 50%; display: flex; align-items: center;
+        justify-content: center; cursor: pointer; transition: all 0.2s;
+    }
+    .tag-add-btn:hover { color: var(--text-white); border-color: rgba(255,255,255,0.35); }
+    .tag-add-btn .material-icons { font-size: 0.85rem; color: inherit; }
+    .tag-input {
+        background: rgba(0,0,0,0.3); border: 1px solid rgba(88,166,255,0.4);
+        border-radius: 20px; padding: 2px 10px;
+        color: var(--text-white); font-size: 0.75rem; outline: none;
+        width: 100px;
+    }
+
+    /* ── Feature #3: Pin button + pinned entry style ───────────────────────── */
+    .btn-pin {
+        background: none; border: none;
+        color: var(--text-dark-muted); cursor: pointer;
+        display: flex; align-items: center; padding: 2px;
+        opacity: 0.35; transition: all 0.2s;
+    }
+    .btn-pin:hover { opacity: 1; color: #d29922; }
+    .btn-pin.pinned { opacity: 1; color: #d29922; }
+    .btn-pin .material-icons { font-size: 1rem; color: inherit; transform: rotate(45deg); transition: transform 0.2s; }
+    .btn-pin.pinned .material-icons { transform: rotate(0deg); }
+
+    .pinned-entry > .timeline-content { border: 1px solid rgba(210,153,34,0.3) !important; background: rgba(210,153,34,0.04) !important; }
+    .pinned-dot { background: #d29922 !important; box-shadow: 0 0 8px rgba(210,153,34,0.6) !important; }
+
+    .pin-divider {
+        display: flex; align-items: center; justify-content: center;
+        padding: 8px 0; margin: 4px 0 8px;
+    }
+    .pin-divider span {
+        color: var(--text-dark-muted); font-size: 0.75rem;
+        letter-spacing: 2px; text-transform: uppercase;
+    }
+
+    /* ── Feature #5: Summary panel + sparkline ─────────────────────────────── */
+    .summary-panel {
+        background: rgba(0,0,0,0.2);
+        border-bottom: 1px solid var(--border-dim);
+    }
+    .summary-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 30px; cursor: pointer; transition: background 0.15s;
+    }
+    .summary-header:hover { background: rgba(255,255,255,0.02); }
+    .summary-title {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 0.85rem; color: var(--text-dark-muted);
+    }
+    .summary-title .material-icons { color: var(--brand-accent); font-size: 1rem; }
+    .summary-sep { opacity: 0.4; }
+    .summary-filter-badge {
+        background: rgba(88,166,255,0.15); color: #58a6ff;
+        font-size: 0.7rem; font-weight: bold;
+        padding: 2px 8px; border-radius: 10px;
+    }
+    .summary-body { padding: 8px 30px 14px; }
+    .type-summary-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .type-summary-chip {
+        display: flex; align-items: center; gap: 6px;
+        background: rgba(255,255,255,0.04); border: 1px solid var(--border-dim);
+        color: var(--text-dark-muted); padding: 5px 14px; border-radius: 20px;
+        cursor: pointer; font-size: 0.82rem; transition: all 0.2s;
+    }
+    .type-summary-chip:hover { color: var(--text-white); border-color: rgba(255,255,255,0.2); }
+    .type-summary-chip.active { color: var(--text-white); background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
+    .type-summary-chip strong { color: inherit; }
+
+    .sparkline {
+        display: flex; align-items: flex-end; gap: 3px;
+        height: 36px; background: rgba(255,255,255,0.02);
+        border-radius: 6px; padding: 4px 8px;
+    }
+    .spark-bar {
+        flex: 1; background: var(--brand-accent);
+        border-radius: 2px 2px 0 0; min-height: 3px;
+        opacity: 0.7; transition: opacity 0.2s;
+    }
+    .spark-bar:hover { opacity: 1; }
+
+    /* ── Feature #8: Duration badge ────────────────────────────────────────── */
+    .duration-badge {
+        display: flex; align-items: center; gap: 4px;
+        color: var(--text-dark-muted); font-size: 0.8rem;
+        font-weight: bold; white-space: nowrap;
+        padding: 4px 8px;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 20px;
     }
 </style>

@@ -1,34 +1,64 @@
 window.zlaInterop = {
     shareJobCode: async function (jobCode) {
-        // Deep-link directly to the job in guest mode — recipient taps and lands right in
         const guestUrl = `${window.location.origin}/job/${jobCode}?role=guest`;
         const shareData = {
             title: 'Join my TimelineZLA',
             text: `Join my live job timeline (code: ${jobCode})`,
             url: guestUrl
         };
-        
         if (navigator.share) {
-            try {
-                await navigator.share(shareData);
-                return true;
-            } catch (err) {
-                console.log('Share canceled or failed', err);
-            }
+            try { await navigator.share(shareData); return true; } catch (err) { }
         }
-        
-        // Fallback: copy the direct guest link to clipboard
         try {
             await navigator.clipboard.writeText(guestUrl);
             alert(`Guest link copied!\n\n${guestUrl}`);
             return true;
-        } catch (err) {
-            console.error('Failed to copy', err);
-            return false;
+        } catch (err) { return false; }
+    },
+
+    // Feature #7: Theme management
+    getTheme: function () {
+        return localStorage.getItem('zla-theme') || 'dark';
+    },
+
+    setTheme: function (theme) {
+        localStorage.setItem('zla-theme', theme);
+        if (theme === 'dark') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', theme);
         }
     },
 
-    // Feature #7: Pleasant 2-tone chime when a guest connects
+    // Feature #6: PWA install prompt
+    registerPwaCallback: function (dotNetRef) {
+        window.dotNetPwaRef = dotNetRef;
+        // If prompt was already captured before Blazor loaded, notify immediately
+        if (window._pwaPrompt) {
+            dotNetRef.invokeMethodAsync('OnInstallAvailable');
+        }
+    },
+
+    canInstallPwa: function () {
+        return !!window._pwaPrompt;
+    },
+
+    triggerInstallPrompt: async function () {
+        if (!window._pwaPrompt) return false;
+        window._pwaPrompt.prompt();
+        const { outcome } = await window._pwaPrompt.userChoice;
+        window._pwaPrompt = null;
+        return outcome === 'accepted';
+    },
+
+    showIosInstallGuide: function () {
+        // Returns true if this is iOS Safari (needs manual Add to Home Screen)
+        const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        const isStandalone = window.navigator.standalone === true;
+        return isIos && !isStandalone;
+    },
+
+    // Feature #7: Guest connect chime
     playConnectSound: function () {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -47,8 +77,6 @@ window.zlaInterop = {
             const t = ctx.currentTime;
             playTone(880, t, 0.18);
             playTone(1100, t + 0.18, 0.25);
-        } catch (e) {
-            // Audio not available — silent fail
-        }
+        } catch (e) { }
     }
 };
